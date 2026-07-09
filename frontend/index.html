@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>DataCleanAI</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2e38;
+    --text: #e6e8ec; --muted: #8b909c; --accent: #5b8def;
+    --ok: #4caf7d; --err: #e0665e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex;
+  }
+  .col { display: flex; flex-direction: column; height: 100vh; }
+  .sidebar { width: 320px; border-right: 1px solid var(--border); padding: 16px; overflow-y: auto; }
+  .main { flex: 1; }
+  .rightbar { width: 320px; border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; }
+  h1 { font-size: 16px; margin: 0 0 12px; }
+  h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 16px 0 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  button {
+    background: var(--accent); color: white; border: none; border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px;
+  }
+  button:disabled { background: #3a3f4b; cursor: not-allowed; color: var(--muted); }
+  button.secondary { background: #2a2e38; }
+  input[type=file] { font-size: 12px; }
+  .col-actions { display: flex; gap: 8px; margin-top: 10px; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: white; }
+  .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
+  .inputbar { border-top: 1px solid var(--border); padding: 14px; display: flex; gap: 10px; }
+  .inputbar input { flex: 1; padding: 10px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 14px; }
+  .col-item { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .col-item .name { color: var(--text); }
+  .col-item .meta { color: var(--muted); }
+  .log-line { font-size: 11px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .log-line .lvl-TOOL { color: var(--ok); font-weight: 600; }
+  .log-line .lvl-SYSTEM { color: var(--muted); }
+  .log-line .lvl-ERROR { color: var(--err); font-weight: 600; }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; margin-top: 40px; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #2a2e38; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="sidebar col">
+  <h1>📊 DataCleanAI</h1>
+  <div class="panel">
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" />
+    <div class="col-actions">
+      <button id="uploadBtn">Upload dataset</button>
+    </div>
+    <div id="uploadStatus" style="font-size:12px;color:var(--muted);margin-top:8px;"></div>
+  </div>
+
+  <h2>Dataset overview</h2>
+  <div class="panel" id="overview"><div class="empty">Upload a dataset to see column info</div></div>
+
+  <div class="col-actions">
+    <button class="secondary" id="undoBtn" disabled>⟲ Undo</button>
+    <button class="secondary" id="redoBtn" disabled>⟳ Redo</button>
+  </div>
+  <div class="col-actions">
+    <button class="secondary" id="downloadBtn" disabled style="width:100%;">⬇ Download cleaned CSV</button>
+  </div>
+</div>
+
+<div class="main col">
+  <div id="chat"><div class="empty">Upload a dataset, then ask things like "drop duplicate rows" or "fill missing values in age with median".</div></div>
+  <div class="inputbar">
+    <input id="msgInput" placeholder="Describe the problem you want fixed..." disabled />
+    <button id="sendBtn" disabled>Send</button>
+  </div>
+</div>
+
+<div class="rightbar col">
+  <h1>Activity log</h1>
+  <div class="panel" id="logs"><div class="empty">No activity yet</div></div>
+</div>
+
+<script>
+const API = "http://localhost:8000/api";
+let sessionId = null;
+
+const $ = (id) => document.getElementById(id);
+
+$("uploadBtn").onclick = async () => {
+  const file = $("fileInput").files[0];
+  if (!file) { $("uploadStatus").textContent = "Choose a file first."; return; }
+  const fd = new FormData();
+  fd.append("file", file);
+  $("uploadStatus").textContent = "Uploading...";
+  try {
+    const res = await fetch(`${API}/dataset/upload`, { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Upload failed");
+    sessionId = data.session_id;
+    $("uploadStatus").textContent = `Loaded: ${file.name}`;
+    renderOverview(data.metadata);
+    $("msgInput").disabled = false;
+    $("sendBtn").disabled = false;
+    $("downloadBtn").disabled = false;
+    $("chat").innerHTML = "";
+    addMsg("assistant", "Dataset loaded. What would you like me to fix first?");
+    refreshLogs();
+  } catch (e) {
+    $("uploadStatus").textContent = "Error: " + e.message;
+  }
+};
+
+function renderOverview(meta) {
+  let html = `<div style="margin-bottom:8px;">
+    <span class="badge">${meta.n_rows} rows</span>
+    <span class="badge">${meta.n_columns} cols</span>
+    <span class="badge">${meta.duplicate_rows} dup rows</span>
+  </div>`;
+  for (const col of meta.columns) {
+    html += `<div class="col-item">
+      <span class="name">${col.name}</span>
+      <span class="meta">${col.dtype} · ${col.null_percentage}% null</span>
+    </div>`;
+  }
+  $("overview").innerHTML = html;
+}
+
+function addMsg(role, text) {
+  const chat = $("chat");
+  if (chat.querySelector(".empty")) chat.innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendMessage() {
+  const text = $("msgInput").value.trim();
+  if (!text || !sessionId) return;
+  addMsg("user", text);
+  $("msgInput").value = "";
+  $("sendBtn").disabled = true;
+
+  try {
+    const res = await fetch(`${API}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, message: text }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Chat failed");
+    addMsg("assistant", data.reply);
+    renderOverview(data.metadata);
+    renderLogs(data.logs);
+    $("undoBtn").disabled = !data.can_undo;
+    $("redoBtn").disabled = !data.can_redo;
+  } catch (e) {
+    addMsg("assistant", "⚠️ Error: " + e.message);
+  } finally {
+    $("sendBtn").disabled = false;
+  }
+}
+
+$("sendBtn").onclick = sendMessage;
+$("msgInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
+
+async function refreshLogs() {
+  if (!sessionId) return;
+  const res = await fetch(`${API}/dataset/logs/${sessionId}`);
+  const logs = await res.json();
+  renderLogs(logs);
+}
+
+function renderLogs(logs) {
+  if (!logs.length) { $("logs").innerHTML = '<div class="empty">No activity yet</div>'; return; }
+  $("logs").innerHTML = logs.slice().reverse().map(l =>
+    `<div class="log-line"><span class="lvl-${l.level}">[${l.level}]</span> ${l.message}
+     <div style="color:var(--muted);font-size:10px;">${new Date(l.timestamp).toLocaleTimeString()}</div></div>`
+  ).join("");
+}
+
+$("undoBtn").onclick = async () => {
+  const res = await fetch(`${API}/dataset/undo?session_id=${sessionId}`, { method: "POST" });
+  const data = await res.json();
+  renderOverview(data.metadata);
+  $("undoBtn").disabled = !data.can_undo;
+  $("redoBtn").disabled = !data.can_redo;
+  addMsg("assistant", "↩️ Reverted last change.");
+  refreshLogs();
+};
+
+$("redoBtn").onclick = async () => {
+  const res = await fetch(`${API}/dataset/redo?session_id=${sessionId}`, { method: "POST" });
+  const data = await res.json();
+  renderOverview(data.metadata);
+  $("undoBtn").disabled = !data.can_undo;
+  $("redoBtn").disabled = !data.can_redo;
+  addMsg("assistant", "↪️ Re-applied change.");
+  refreshLogs();
+};
+
+$("downloadBtn").onclick = () => {
+  window.open(`${API}/dataset/download/${sessionId}`, "_blank");
+};
+</script>
+</body>
+</html>
