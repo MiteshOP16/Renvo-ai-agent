@@ -77,10 +77,114 @@ def convert_dtype(column: str, target_type: str) -> str:
     return "handled_by_executor"
 
 
+@tool
+def handle_outliers(
+    column: str,
+    method: str = "cap",
+    iqr_multiplier: float = 1.5,
+) -> str:
+    """Detect and handle statistical outliers in a numeric column using the IQR method.
+
+    Args:
+        column: The numeric column to check for outliers.
+        method: 'cap' to clip outlier values to the nearest acceptable bound
+            (Winsorize-style, keeps all rows), or 'remove' to drop rows whose
+            value in this column falls outside the bounds.
+        iqr_multiplier: How many IQRs beyond Q1/Q3 counts as an outlier.
+            1.5 is the standard threshold; use a higher value (e.g. 3.0) to
+            only flag extreme outliers.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def standardize_text(
+    column: str,
+    trim_whitespace: bool = True,
+    case: Optional[str] = None,
+) -> str:
+    """Clean up a text column: trim leading/trailing whitespace and/or
+    standardize letter case, so values like 'Mumbai', ' mumbai ', 'MUMBAI'
+    become consistent.
+
+    Args:
+        column: The text column to standardize.
+        trim_whitespace: Whether to strip leading/trailing whitespace.
+        case: One of 'lower', 'upper', 'title', or None to leave case as-is.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def find_and_replace(
+    column: str,
+    old_value: str,
+    new_value: str,
+    match_case: bool = True,
+) -> str:
+    """Replace a specific bad or inconsistent value in a column with a
+    corrected value. Useful for fixing typos, inconsistent category labels
+    (e.g. 'NY' vs 'New York'), or a stray non-numeric entry in a numeric column.
+
+    Args:
+        column: The column to fix.
+        old_value: The exact value to find and replace (as it currently
+            appears in the data).
+        new_value: The value to replace it with.
+        match_case: Whether the match should be case-sensitive.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def split_column(
+    column: str,
+    delimiter: str,
+    new_column_names: List[str],
+    drop_original: bool = True,
+) -> str:
+    """Split a single column into multiple new columns based on a delimiter,
+    e.g. splitting 'full_name' by ' ' into 'first_name' and 'last_name'.
+
+    Args:
+        column: The column to split.
+        delimiter: The character/string to split on.
+        new_column_names: Names for the resulting columns, in order. The
+            number of names should match the expected number of parts.
+        drop_original: Whether to remove the original column after splitting.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def filter_rows(
+    column: str,
+    condition: str,
+    value: Optional[str] = None,
+) -> str:
+    """Remove rows that match (or fail) a condition on a column -- e.g.
+    dropping rows where age > 150 or where a column is blank.
+
+    Args:
+        column: The column to evaluate.
+        condition: One of 'greater_than', 'less_than', 'equals', 'not_equals',
+            'contains', 'is_null', 'not_null'. Rows matching the condition are
+            REMOVED (e.g. condition='greater_than', value='150' on 'age'
+            removes every row where age > 150).
+        value: The comparison value (not needed for 'is_null'/'not_null').
+    """
+    return "handled_by_executor"
+
+
 ALL_TOOLS = [
     drop_duplicates,
     handle_missing_values,
     drop_column,
     rename_column,
     convert_dtype,
+    handle_outliers,
+    standardize_text,
+    find_and_replace,
+    split_column,
+    filter_rows,
 ]

@@ -5,7 +5,7 @@ from app.tools.definitions import ALL_TOOLS
 
 
 def get_llm_with_tools():
-    """Fresh ChatGroq client bound to all 5 tools via LangChain's tool_bind."""
+    """Fresh ChatGroq client bound to all registered tools via LangChain's tool_bind."""
     base_llm = ChatGroq(
         api_key=settings.GROQ_API_KEY,
         model=settings.GROQ_MODEL,
