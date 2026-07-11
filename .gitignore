@@ -2,3 +2,24 @@ venv
 **/.env
 __pycache__/
 __init__.py
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Optional: Python virtual environments
+venv/
+.venv/
+env/
+
+# Optional: IDE files
+.vscode/
+.idea/
+
+# Optional: Environment variables
+.env
+
+# Optional: OS files
+.DS_Store
+Thumbs.db
