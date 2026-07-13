@@ -176,6 +176,89 @@ def filter_rows(
     return "handled_by_executor"
 
 
+@tool
+def merge_columns(
+    columns: List[str],
+    new_column_name: str,
+    separator: str = " ",
+    drop_original: bool = True,
+) -> str:
+    """Merge two or more columns into a single new text column, e.g.
+    combining 'first_name' and 'last_name' into 'full_name'.
+
+    Args:
+        columns: Column names to merge, in order.
+        new_column_name: Name for the resulting merged column.
+        separator: String placed between values when merging.
+        drop_original: Whether to remove the original columns afterward.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def extract_datetime_parts(
+    column: str,
+    parts: List[str],
+    drop_original: bool = False,
+) -> str:
+    """Extract date/time components from a datetime column into new columns,
+    e.g. splitting 'signup_date' into 'signup_date_year' and
+    'signup_date_month'. The column should already be (or be convertible to)
+    a datetime type.
+
+    Args:
+        column: The datetime column to extract from.
+        parts: Which components to extract: 'year', 'month', 'day',
+            'weekday', 'hour', 'minute', or 'quarter'.
+        drop_original: Whether to remove the original datetime column afterward.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def remove_type_anomalies(column: str, expected_type: str) -> str:
+    """Find values in a column that don't match the expected type (e.g. the
+    text 'forty' sitting inside an otherwise numeric column) and set them to
+    null, so they can then be handled with handle_missing_values. This does
+    not guess or coerce values -- it only nulls the ones that don't fit.
+
+    Args:
+        column: The column to scan.
+        expected_type: 'numeric' or 'datetime'.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def clip_numeric_range(
+    column: str,
+    min_value: Optional[float] = None,
+    max_value: Optional[float] = None,
+) -> str:
+    """Clamp a numeric column to explicit domain-known bounds, e.g. an 'age'
+    column should never be below 0 or above 120. Unlike handle_outliers
+    (which is statistics-based via IQR), this uses bounds you specify directly.
+
+    Args:
+        column: The numeric column to clamp.
+        min_value: Values below this are raised to this value. Omit to skip a lower bound.
+        max_value: Values above this are lowered to this value. Omit to skip an upper bound.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def sort_dataset(column: str, ascending: bool = True) -> str:
+    """Sort the entire dataset by a column, useful for inspecting the data
+    after cleaning (e.g. sort by date, or by an id).
+
+    Args:
+        column: The column to sort by.
+        ascending: True for ascending order, False for descending.
+    """
+    return "handled_by_executor"
+
+
 ALL_TOOLS = [
     drop_duplicates,
     handle_missing_values,
@@ -187,4 +270,9 @@ ALL_TOOLS = [
     find_and_replace,
     split_column,
     filter_rows,
+    merge_columns,
+    extract_datetime_parts,
+    remove_type_anomalies,
+    clip_numeric_range,
+    sort_dataset,
 ]

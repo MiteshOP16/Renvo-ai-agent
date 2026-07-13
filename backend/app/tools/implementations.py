@@ -240,6 +240,109 @@ def filter_rows_impl(df: pd.DataFrame, column: str, condition: str, value: str |
     return new_df, f"Removed {removed} row(s) where '{column}' {condition} {value if value is not None else ''}.".strip()
 
 
+def merge_columns_impl(
+    df: pd.DataFrame,
+    columns: list[str],
+    new_column_name: str,
+    separator: str = " ",
+    drop_original: bool = True,
+):
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        raise ValueError(f"Columns not found: {missing}")
+    if len(columns) < 2:
+        raise ValueError("merge_columns needs at least 2 columns.")
+
+    new_df = df.copy()
+    new_df[new_column_name] = new_df[columns].astype(str).agg(separator.join, axis=1)
+    if drop_original:
+        new_df = new_df.drop(columns=[c for c in columns if c != new_column_name])
+
+    return new_df, f"Merged columns {columns} into '{new_column_name}' using separator '{separator}'."
+
+
+_DT_PART_EXTRACTORS = {
+    "year": lambda s: s.dt.year,
+    "month": lambda s: s.dt.month,
+    "day": lambda s: s.dt.day,
+    "weekday": lambda s: s.dt.day_name(),
+    "hour": lambda s: s.dt.hour,
+    "minute": lambda s: s.dt.minute,
+    "quarter": lambda s: s.dt.quarter,
+}
+
+
+def extract_datetime_parts_impl(
+    df: pd.DataFrame,
+    column: str,
+    parts: list[str],
+    drop_original: bool = False,
+):
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found.")
+    unknown = [p for p in parts if p not in _DT_PART_EXTRACTORS]
+    if unknown:
+        raise ValueError(f"Unsupported datetime part(s): {unknown}. Use {list(_DT_PART_EXTRACTORS)}.")
+
+    new_df = df.copy()
+    dt_series = pd.to_datetime(new_df[column], errors="coerce")
+    for part in parts:
+        new_df[f"{column}_{part}"] = _DT_PART_EXTRACTORS[part](dt_series)
+    if drop_original:
+        new_df = new_df.drop(columns=[column])
+
+    return new_df, f"Extracted {parts} from '{column}' into new column(s)."
+
+
+def remove_type_anomalies_impl(df: pd.DataFrame, column: str, expected_type: str):
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found.")
+
+    new_df = df.copy()
+    if expected_type == "numeric":
+        coerced = pd.to_numeric(new_df[column], errors="coerce")
+    elif expected_type == "datetime":
+        coerced = pd.to_datetime(new_df[column], errors="coerce")
+    else:
+        raise ValueError("expected_type must be 'numeric' or 'datetime'.")
+
+    was_present = new_df[column].notnull()
+    now_null = coerced.isnull()
+    anomaly_mask = was_present & now_null
+    n_anomalies = int(anomaly_mask.sum())
+
+    new_df.loc[anomaly_mask, column] = None
+    return new_df, f"Flagged {n_anomalies} value(s) in '{column}' that don't look like {expected_type} and set them to null."
+
+
+def clip_numeric_range_impl(
+    df: pd.DataFrame,
+    column: str,
+    min_value: float | None = None,
+    max_value: float | None = None,
+):
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found.")
+    if not pd.api.types.is_numeric_dtype(df[column]):
+        raise ValueError(f"Column '{column}' is not numeric; convert its dtype first.")
+    if min_value is None and max_value is None:
+        raise ValueError("Provide at least one of min_value or max_value.")
+
+    new_df = df.copy()
+    before = new_df[column].copy()
+    new_df[column] = new_df[column].clip(lower=min_value, upper=max_value)
+    n_changed = int((before != new_df[column]).sum())
+
+    return new_df, f"Clamped {n_changed} value(s) in '{column}' to range [{min_value}, {max_value}]."
+
+
+def sort_dataset_impl(df: pd.DataFrame, column: str, ascending: bool = True):
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found.")
+    new_df = df.sort_values(by=column, ascending=ascending).reset_index(drop=True)
+    return new_df, f"Sorted dataset by '{column}' ({'ascending' if ascending else 'descending'})."
+
+
 # name -> callable(df, **args) -> (new_df, description)
 TOOL_EXECUTORS = {
     "drop_duplicates": drop_duplicates_impl,
@@ -252,4 +355,9 @@ TOOL_EXECUTORS = {
     "find_and_replace": find_and_replace_impl,
     "split_column": split_column_impl,
     "filter_rows": filter_rows_impl,
+    "merge_columns": merge_columns_impl,
+    "extract_datetime_parts": extract_datetime_parts_impl,
+    "remove_type_anomalies": remove_type_anomalies_impl,
+    "clip_numeric_range": clip_numeric_range_impl,
+    "sort_dataset": sort_dataset_impl,
 }

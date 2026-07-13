@@ -6,7 +6,9 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.graph import agent_graph
+from app.agent.llm import get_plain_llm
 from app.core.config import settings
+from app.core.context_manager import summarize_old_turns
 from app.core.metadata_extractor import extract_metadata
 from app.core.session_manager import session_manager
 from app.models.schemas import (
@@ -47,6 +49,26 @@ async def chat(req: ChatRequest):
         raise HTTPException(404, "Session not found. Please upload a dataset first.")
 
     session_manager.add_chat(req.session_id, "user", req.message)
+
+    # Hierarchical summarization: once stored raw history grows past the
+    # trigger, fold the oldest turns into the running summary and prune
+    # them from storage. This is what keeps token usage roughly constant
+    # across a long conversation instead of growing every turn.
+    full_history = session_manager.get_full_chat_history(req.session_id)
+    if len(full_history) > settings.SUMMARY_TRIGGER_TURNS:
+        keep = settings.SUMMARY_KEEP_RECENT
+        old_turns, _recent = full_history[:-keep], full_history[-keep:]
+        try:
+            new_summary = summarize_old_turns(
+                get_plain_llm(), old_turns, session_manager.get_summary(req.session_id)
+            )
+            session_manager.set_summary(req.session_id, new_summary)
+            session_manager.prune_history(req.session_id, keep)
+        except Exception as e:
+            # Summarization is a nice-to-have for token efficiency, never a
+            # reason to break the chat -- just skip pruning this turn.
+            session_manager.log_public(req.session_id, "ERROR", f"Summarization skipped: {e}")
+
     history = session_manager.get_chat_history(req.session_id, limit=settings.MAX_CHAT_HISTORY)
 
     # Rebuild trimmed LangChain message history (context optimisation: only
@@ -63,21 +85,35 @@ async def chat(req: ChatRequest):
         "session_id": req.session_id,
         "messages": lc_messages,
         "metadata": {},
+        "summary": "",
         "tool_call_count": 0,
+        "executed_calls": [],
     }
 
     try:
         result = agent_graph.invoke(initial_state)
+        final_reply = ""
+        for msg in reversed(result["messages"]):
+            if isinstance(msg, AIMessage) and msg.content:
+                final_reply = msg.content
+                break
+        if not final_reply:
+            if result.get("tool_call_count", 0) >= settings.MAX_TOOL_CALLS_PER_TURN:
+                final_reply = (
+                    "I've made several changes and reached this turn's action limit. "
+                    "Let me know if you'd like me to continue."
+                )
+            else:
+                final_reply = "Done."
     except Exception as e:
-        raise HTTPException(500, f"Agent error: {e}")
-
-    final_reply = ""
-    for msg in reversed(result["messages"]):
-        if isinstance(msg, AIMessage) and msg.content:
-            final_reply = msg.content
-            break
-    if not final_reply:
-        final_reply = "Done."
+        # Graph-level failure (not a single tool failure -- those are already
+        # caught inside the graph). Recover without losing conversation
+        # state: the user's message and dataset version are untouched.
+        session_manager.log_public(req.session_id, "ERROR", f"Agent error: {e}")
+        final_reply = (
+            "Something went wrong on my end handling that request. Your dataset wasn't "
+            "changed -- could you try rephrasing, or try again in a moment?"
+        )
 
     session_manager.add_chat(req.session_id, "assistant", final_reply)
 
