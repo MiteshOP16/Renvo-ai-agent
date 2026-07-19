@@ -15,17 +15,24 @@ The core decision graph.
   the running conversation summary into state. Runs at the start of a turn
   and again after every tool call, so the model always reasons/summarizes
   against fresh numbers.
-- agent_decide: LLM (Groq, tool-bound) reads the domain system prompt +
-  metadata + summary + recent chat history and either calls a tool or
-  replies in plain language. Wrapped in retry logic for transient failures.
+- agent_decide: LLM (Groq, tool-bound to both mutating and analysis tools)
+  reads the domain system prompt + metadata + summary + recent chat history
+  and either calls a tool or replies in plain language. Wrapped in retry
+  logic for transient failures.
 - execute_tool: validates the proposed call against the real function
   signature (catches hallucinated/malformed calls before they touch data),
-  blocks duplicate calls within the same turn (loop guard), runs the real
-  pandas implementation, and records both a UI-facing log line and a
-  structured tool_history entry.
+  blocks duplicate calls within the same turn (loop guard), dispatches to
+  the mutating registry (creates a new dataset version) or the analysis
+  registry (read-only, no version created), and records both a UI-facing
+  log line and a structured tool_history entry.
 
-A tool_call_count guard prevents runaway loops; the system prompt also asks
-the model to use at most one dataset-modifying tool per turn for now.
+Tool results are prefixed "Success:" / "Result:" / "Error:" / "Skipped:" on
+purpose -- the system prompt requires the model to stay grounded in that
+literal prefix rather than assuming a change happened. This directly fixes
+a bug where the model would claim it dropped a column that a tool call had
+actually failed to find.
+
+A tool_call_count guard prevents runaway loops.
 """
 
 import json
@@ -41,7 +48,13 @@ from app.core.config import settings
 from app.core.metadata_extractor import extract_metadata
 from app.core.reliability import ToolValidationError, call_with_retry, validate_tool_call
 from app.core.session_manager import session_manager
+from app.tools.analysis_implementations import ANALYSIS_TOOL_EXECUTORS
+from app.tools.column_resolver import ColumnNotFoundError
 from app.tools.implementations import TOOL_EXECUTORS
+
+# Combined only for argument-signature validation -- execution still
+# dispatches to the correct registry based on which one the name is in.
+_ALL_EXECUTORS_FOR_VALIDATION = {**TOOL_EXECUTORS, **ANALYSIS_TOOL_EXECUTORS}
 
 
 def build_context_node(state: AgentState) -> dict:
@@ -56,10 +69,6 @@ def agent_decide_node(state: AgentState) -> dict:
     metadata_json = json.dumps(state["metadata"], indent=2)
     system_msg = SystemMessage(content=build_system_prompt(metadata_json, state.get("summary", "")))
 
-    # Context optimisation: system prompt (fresh metadata + compressed
-    # summary) + only the messages accumulated so far this turn. Older raw
-    # history never reaches this call -- it was already folded into the
-    # summary by the API layer before the graph was invoked.
     messages = [system_msg] + state["messages"]
 
     try:
@@ -111,29 +120,43 @@ def execute_tool_node(state: AgentState) -> dict:
             tool_messages.append(ToolMessage(content=result_text, tool_call_id=call_id))
             continue
 
+        is_analysis = name in ANALYSIS_TOOL_EXECUTORS
+
         try:
             # --- validate before executing: catches unknown/hallucinated
             # tools, missing required args, and unexpected args up front ---
-            validate_tool_call(name, args, TOOL_EXECUTORS)
-            executor = TOOL_EXECUTORS[name]
-            new_df, description = executor(df, **args)
+            validate_tool_call(name, args, _ALL_EXECUTORS_FOR_VALIDATION)
 
-            # --- validate the output before trusting it ---
-            if not isinstance(new_df, pd.DataFrame):
-                raise ToolValidationError(f"'{name}' returned something that wasn't a dataset.")
-            if not description:
-                raise ToolValidationError(f"'{name}' didn't report what it changed.")
+            if is_analysis:
+                executor = ANALYSIS_TOOL_EXECUTORS[name]
+                report = executor(df, **args)
+                if not isinstance(report, str) or not report.strip():
+                    raise ToolValidationError(f"'{name}' didn't return a usable result.")
+                session_manager.record_tool_call(session_id, name, args, report, success=True)
+                session_manager.log_public(session_id, "ANALYSIS", f"{name}: {report.splitlines()[0]}")
+                result_text = f"Result: {report}"
+            else:
+                executor = TOOL_EXECUTORS[name]
+                new_df, description = executor(df, **args)
 
-            session_manager.apply_new_version(session_id, new_df, description)
-            session_manager.record_tool_call(session_id, name, args, description, success=True)
-            df = new_df
-            result_text = f"Success: {description}"
+                if not isinstance(new_df, pd.DataFrame):
+                    raise ToolValidationError(f"'{name}' returned something that wasn't a dataset.")
+                if not description:
+                    raise ToolValidationError(f"'{name}' didn't report what it changed.")
 
-        except ToolValidationError as e:
+                session_manager.apply_new_version(session_id, new_df, description)
+                session_manager.record_tool_call(session_id, name, args, description, success=True)
+                df = new_df
+                result_text = f"Success: {description}"
+
+        except (ToolValidationError, ColumnNotFoundError) as e:
+            # Both are "the request couldn't be carried out as specified" --
+            # friendly, already contains enough detail (e.g. real column
+            # list + suggestions) for the model to self-correct or ask.
             result_text = f"Error: {e}"
             session_manager.log_public(session_id, "ERROR", result_text)
             session_manager.record_tool_call(session_id, name, args, str(e), success=False)
-        except Exception as e:  # real execution errors (bad column, bad dtype, etc.)
+        except Exception as e:  # other real execution errors
             result_text = f"Error running {name}: {e}"
             session_manager.log_public(session_id, "ERROR", result_text)
             session_manager.record_tool_call(session_id, name, args, str(e), success=False)
@@ -159,7 +182,6 @@ def build_graph():
     graph.add_conditional_edges(
         "agent_decide", route_after_agent, {"execute_tool": "execute_tool", END: END}
     )
-    # refresh metadata after every tool call before the LLM summarizes / decides again
     graph.add_edge("execute_tool", "build_context")
 
     return graph.compile()

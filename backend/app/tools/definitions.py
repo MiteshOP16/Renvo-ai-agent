@@ -4,15 +4,23 @@ LangChain tool *schemas* only.
 These are what get passed to `llm.bind_tools([...])` so the LLM knows the
 tool names, descriptions and argument shapes. The function bodies are never
 actually called by LangChain -- the graph intercepts `AIMessage.tool_calls`
-and runs the matching function in `implementations.py` against the real
-DataFrame. This keeps the LLM completely decoupled from raw data: it only
-ever proposes a `{name, args}` pair.
+and runs the matching function in implementations.py (mutating tools) or
+analysis_implementations.py (read-only tools) against the real DataFrame.
+This keeps the LLM completely decoupled from raw data: it only ever
+proposes a `{name, args}` pair.
+
+Tools are grouped into two families, distinguished by what they DO, not by
+anything the LLM has to track: MUTATING tools change the dataset and create
+a new undo/redo version; ANALYSIS tools only report information back and
+never modify anything. Descriptions say so explicitly.
 """
 
 from typing import List, Optional
 
 from langchain_core.tools import tool
 
+
+# ============================== MUTATING TOOLS ==============================
 
 @tool
 def drop_duplicates(subset: Optional[List[str]] = None, keep: str = "first") -> str:
@@ -78,11 +86,7 @@ def convert_dtype(column: str, target_type: str) -> str:
 
 
 @tool
-def handle_outliers(
-    column: str,
-    method: str = "cap",
-    iqr_multiplier: float = 1.5,
-) -> str:
+def handle_outliers(column: str, method: str = "cap", iqr_multiplier: float = 1.5) -> str:
     """Detect and handle statistical outliers in a numeric column using the IQR method.
 
     Args:
@@ -98,11 +102,7 @@ def handle_outliers(
 
 
 @tool
-def standardize_text(
-    column: str,
-    trim_whitespace: bool = True,
-    case: Optional[str] = None,
-) -> str:
+def standardize_text(column: str, trim_whitespace: bool = True, case: Optional[str] = None) -> str:
     """Clean up a text column: trim leading/trailing whitespace and/or
     standardize letter case, so values like 'Mumbai', ' mumbai ', 'MUMBAI'
     become consistent.
@@ -116,12 +116,7 @@ def standardize_text(
 
 
 @tool
-def find_and_replace(
-    column: str,
-    old_value: str,
-    new_value: str,
-    match_case: bool = True,
-) -> str:
+def find_and_replace(column: str, old_value: str, new_value: str, match_case: bool = True) -> str:
     """Replace a specific bad or inconsistent value in a column with a
     corrected value. Useful for fixing typos, inconsistent category labels
     (e.g. 'NY' vs 'New York'), or a stray non-numeric entry in a numeric column.
@@ -157,11 +152,7 @@ def split_column(
 
 
 @tool
-def filter_rows(
-    column: str,
-    condition: str,
-    value: Optional[str] = None,
-) -> str:
+def filter_rows(column: str, condition: str, value: Optional[str] = None) -> str:
     """Remove rows that match (or fail) a condition on a column -- e.g.
     dropping rows where age > 150 or where a column is blank.
 
@@ -196,11 +187,7 @@ def merge_columns(
 
 
 @tool
-def extract_datetime_parts(
-    column: str,
-    parts: List[str],
-    drop_original: bool = False,
-) -> str:
+def extract_datetime_parts(column: str, parts: List[str], drop_original: bool = False) -> str:
     """Extract date/time components from a datetime column into new columns,
     e.g. splitting 'signup_date' into 'signup_date_year' and
     'signup_date_month'. The column should already be (or be convertible to)
@@ -230,11 +217,7 @@ def remove_type_anomalies(column: str, expected_type: str) -> str:
 
 
 @tool
-def clip_numeric_range(
-    column: str,
-    min_value: Optional[float] = None,
-    max_value: Optional[float] = None,
-) -> str:
+def clip_numeric_range(column: str, min_value: Optional[float] = None, max_value: Optional[float] = None) -> str:
     """Clamp a numeric column to explicit domain-known bounds, e.g. an 'age'
     column should never be below 0 or above 120. Unlike handle_outliers
     (which is statistics-based via IQR), this uses bounds you specify directly.
@@ -259,6 +242,83 @@ def sort_dataset(column: str, ascending: bool = True) -> str:
     return "handled_by_executor"
 
 
+# ============================== ANALYSIS TOOLS ==============================
+# Read-only: these NEVER modify the dataset or create an undo/redo version.
+# Use them to answer questions or inform a decision before (or instead of)
+# calling a mutating tool.
+
+@tool
+def profile_column(column: str) -> str:
+    """Get a detailed read-only profile of a single column: missing %,
+    unique count, an estimated data-quality score, and (for numeric columns)
+    distribution stats like mean/median/std/skewness, or (for text columns)
+    the most common values. Does NOT modify the dataset. Use this when the
+    user wants to understand a column before deciding how to clean it.
+
+    Args:
+        column: The column to profile.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def compute_correlation(method: str = "pearson", threshold: float = 0.7) -> str:
+    """Compute correlations between all numeric columns and report pairs
+    that are strongly correlated. Does NOT modify the dataset. Use this when
+    the user asks how columns relate to each other, or wants to check for
+    redundant numeric features.
+
+    Args:
+        method: 'pearson', 'spearman', or 'kendall'.
+        threshold: Minimum absolute correlation to report (0 to 1).
+    """
+    return "handled_by_executor"
+
+
+@tool
+def detect_outliers_report(column: Optional[str] = None, iqr_multiplier: float = 1.5) -> str:
+    """Report how many statistical outliers exist and how severe the problem
+    is, without changing anything. Use this BEFORE handle_outliers so the
+    user can see the scale of the issue first, or when they just want to
+    know whether outliers are a problem.
+
+    Args:
+        column: A specific numeric column to check. Omit to check every
+            numeric column in the dataset.
+        iqr_multiplier: How many IQRs beyond Q1/Q3 counts as an outlier.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def value_counts(column: str, top_n: int = 10) -> str:
+    """Show the most frequent values in a column and their counts/percentages.
+    Does NOT modify the dataset. Use this when the user wants to see what
+    categories/values exist in a column, e.g. before deciding on a
+    find_and_replace fix for inconsistent labels.
+
+    Args:
+        column: The column to summarize.
+        top_n: How many of the most frequent values to show.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def detect_missing_pattern(column: str) -> str:
+    """Analyze HOW the missing values in a column are distributed -- randomly
+    scattered, clustered at the start/end, or occurring in long consecutive
+    blocks. Does NOT modify the dataset. Use this when the user wants to
+    understand WHY data might be missing before choosing an imputation
+    strategy (e.g. a systematic block often means a different fix than
+    random scatter).
+
+    Args:
+        column: The column to analyze.
+    """
+    return "handled_by_executor"
+
+
 ALL_TOOLS = [
     drop_duplicates,
     handle_missing_values,
@@ -275,4 +335,9 @@ ALL_TOOLS = [
     remove_type_anomalies,
     clip_numeric_range,
     sort_dataset,
+    profile_column,
+    compute_correlation,
+    detect_outliers_report,
+    value_counts,
+    detect_missing_pattern,
 ]
