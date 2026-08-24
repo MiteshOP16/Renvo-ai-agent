@@ -6,7 +6,7 @@ The core decision graph.
                             |                                        |
                             +----------------------------------------+
                             |
-                          (no tool_calls)
+                          (no tool_calls, incl. clarifying questions)
                             |
                             v
                            END
@@ -15,24 +15,24 @@ The core decision graph.
   the running conversation summary into state. Runs at the start of a turn
   and again after every tool call, so the model always reasons/summarizes
   against fresh numbers.
-- agent_decide: LLM (Groq, tool-bound to both mutating and analysis tools)
-  reads the domain system prompt + metadata + summary + recent chat history
-  and either calls a tool or replies in plain language. Wrapped in retry
-  logic for transient failures.
+- agent_decide: routes this turn's tools via semantic retrieval + rerank
+  (see tool_router.py) instead of binding the full tool catalog. If routing
+  confidence is too low (the request is too vague to confidently match to a
+  specific action), it asks the user a clarifying question instead of
+  guessing -- no tools are bound for that call, so a wrong guess is
+  structurally impossible, not just discouraged by the prompt. Otherwise it
+  binds the routed subset and lets the LLM decide whether to call a tool or
+  reply directly. Wrapped in retry logic for transient failures, with a
+  narrower-tool-set fallback retry for Groq's malformed-tool-call failures.
 - execute_tool: validates the proposed call against the real function
-  signature (catches hallucinated/malformed calls before they touch data),
-  blocks duplicate calls within the same turn (loop guard), dispatches to
-  the mutating registry (creates a new dataset version) or the analysis
-  registry (read-only, no version created), and records both a UI-facing
-  log line and a structured tool_history entry.
+  signature, blocks duplicate calls within the same turn (loop guard),
+  dispatches to the mutating registry (creates a new dataset version) or
+  the analysis registry (read-only), and records both a UI-facing log line
+  and a structured tool_history entry.
 
 Tool results are prefixed "Success:" / "Result:" / "Error:" / "Skipped:" on
 purpose -- the system prompt requires the model to stay grounded in that
-literal prefix rather than assuming a change happened. This directly fixes
-a bug where the model would claim it dropped a column that a tool call had
-actually failed to find.
-
-A tool_call_count guard prevents runaway loops.
+literal prefix rather than assuming a change happened.
 """
 
 import json
@@ -41,20 +41,27 @@ import pandas as pd
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 
-from app.agent.llm import get_llm_with_tools
+from app.agent.llm import get_llm_with_tools, get_plain_llm
 from app.agent.prompts import build_system_prompt
 from app.agent.state import AgentState
+from app.agent.tool_router import accumulate_turn_text, route_tools
 from app.core.config import settings
 from app.core.metadata_extractor import extract_metadata
 from app.core.reliability import ToolValidationError, call_with_retry, validate_tool_call
 from app.core.session_manager import session_manager
 from app.tools.analysis_implementations import ANALYSIS_TOOL_EXECUTORS
 from app.tools.column_resolver import ColumnNotFoundError
+from app.tools.definitions import ALL_TOOLS
 from app.tools.implementations import TOOL_EXECUTORS
 
-# Combined only for argument-signature validation -- execution still
-# dispatches to the correct registry based on which one the name is in.
 _ALL_EXECUTORS_FOR_VALIDATION = {**TOOL_EXECUTORS, **ANALYSIS_TOOL_EXECUTORS}
+
+_TOOL_SCHEMA_ERROR_MARKERS = ("tool call validation failed", "not in request.tools", "tool_use_failed")
+
+
+def _looks_like_tool_schema_error(e: Exception) -> bool:
+    text = str(e).lower()
+    return any(marker in text for marker in _TOOL_SCHEMA_ERROR_MARKERS)
 
 
 def build_context_node(state: AgentState) -> dict:
@@ -65,22 +72,79 @@ def build_context_node(state: AgentState) -> dict:
 
 
 def agent_decide_node(state: AgentState) -> dict:
-    llm = get_llm_with_tools()
     metadata_json = json.dumps(state["metadata"], indent=2)
-    system_msg = SystemMessage(content=build_system_prompt(metadata_json, state.get("summary", "")))
+    system_prompt_text = build_system_prompt(metadata_json, state.get("summary", ""))
+    messages = [SystemMessage(content=system_prompt_text)] + state["messages"]
 
-    messages = [system_msg] + state["messages"]
+    context_text = accumulate_turn_text(state["messages"])
+    try:
+        routing = route_tools(context_text)
+    except Exception as e:
+        # Qdrant or the embedding/reranker model itself is unreachable --
+        # this is an infrastructure outage, not an ambiguous request, so
+        # don't ask the user to clarify. Degrade to the pre-retrieval
+        # behavior (bind everything) rather than failing the whole turn.
+        session_manager.log_public(
+            state["session_id"], "ERROR",
+            f"Tool retrieval unavailable, falling back to full tool set: {e}",
+        )
+        routing = {"tools": ALL_TOOLS, "confidence": 1.0, "needs_clarification": False}
+
+    # --- too vague to confidently route: ask, don't guess ---
+    if routing["needs_clarification"]:
+        session_manager.log_public(
+            state["session_id"], "SYSTEM",
+            f"Routing confidence too low ({routing['confidence']:.2f}) -- asking for clarification instead of guessing a tool.",
+        )
+        clarify_system = SystemMessage(
+            content=system_prompt_text
+            + "\n\nThe user's last message doesn't clearly match a specific supported action "
+              "(nothing in the tool catalog matched with confidence). Do NOT guess which action "
+              "they want and do NOT call a tool. Ask one short, specific clarifying question -- "
+              "e.g. which column is involved, or what kind of change they want -- referencing the "
+              "actual column names from the metadata above where relevant."
+        )
+        try:
+            response = call_with_retry(get_plain_llm().invoke, [clarify_system] + state["messages"])
+        except Exception as e:
+            session_manager.log_public(state["session_id"], "ERROR", f"Clarification call failed: {e}")
+            response = AIMessage(content="Could you tell me a bit more about what you'd like me to do, and which column it involves?")
+        return {"messages": [response]}
+
+    routed_tools = routing["tools"]
 
     try:
+        llm = get_llm_with_tools(tools=routed_tools)
         response = call_with_retry(llm.invoke, messages)
     except Exception as e:
-        session_manager.log_public(state["session_id"], "ERROR", f"LLM call failed after retries: {e}")
-        response = AIMessage(
-            content=(
-                "Sorry, I'm having trouble reaching the model right now. "
-                "Your dataset hasn't been changed -- please try again in a moment."
+        if _looks_like_tool_schema_error(e):
+            # The model malformed a tool call given this schema. Retrying
+            # identically would likely fail identically (temperature=0) --
+            # fall back to just the top 3 already-reranked tools (a
+            # smaller, still-relevant schema) and try once more.
+            session_manager.log_public(
+                state["session_id"], "ERROR", f"Tool schema error, retrying with a narrower tool set: {e}"
             )
-        )
+            try:
+                narrow_llm = get_llm_with_tools(tools=routed_tools[:3])
+                response = call_with_retry(narrow_llm.invoke, messages, max_attempts=1)
+            except Exception as e2:
+                session_manager.log_public(state["session_id"], "ERROR", f"Narrow retry also failed: {e2}")
+                response = AIMessage(
+                    content=(
+                        "Sorry, I had trouble matching that request to one of my actions. "
+                        "Could you rephrase it, or tell me exactly which column and action you mean? "
+                        "Your dataset hasn't been changed."
+                    )
+                )
+        else:
+            session_manager.log_public(state["session_id"], "ERROR", f"LLM call failed after retries: {e}")
+            response = AIMessage(
+                content=(
+                    "Sorry, I'm having trouble reaching the model right now. "
+                    "Your dataset hasn't been changed -- please try again in a moment."
+                )
+            )
     return {"messages": [response]}
 
 
@@ -111,20 +175,14 @@ def execute_tool_node(state: AgentState) -> dict:
         call_id = call["id"]
         signature = _call_signature(name, args)
 
-        # --- loop / duplicate-step guard ---
         if signature in already_called:
-            result_text = (
-                f"Skipped: '{name}' with the same arguments was already applied this turn "
-                "-- avoiding a duplicate change."
-            )
+            result_text = f"Skipped: '{name}' with the same arguments was already applied this turn -- avoiding a duplicate change."
             tool_messages.append(ToolMessage(content=result_text, tool_call_id=call_id))
             continue
 
         is_analysis = name in ANALYSIS_TOOL_EXECUTORS
 
         try:
-            # --- validate before executing: catches unknown/hallucinated
-            # tools, missing required args, and unexpected args up front ---
             validate_tool_call(name, args, _ALL_EXECUTORS_FOR_VALIDATION)
 
             if is_analysis:
@@ -150,13 +208,10 @@ def execute_tool_node(state: AgentState) -> dict:
                 result_text = f"Success: {description}"
 
         except (ToolValidationError, ColumnNotFoundError) as e:
-            # Both are "the request couldn't be carried out as specified" --
-            # friendly, already contains enough detail (e.g. real column
-            # list + suggestions) for the model to self-correct or ask.
             result_text = f"Error: {e}"
             session_manager.log_public(session_id, "ERROR", result_text)
             session_manager.record_tool_call(session_id, name, args, str(e), success=False)
-        except Exception as e:  # other real execution errors
+        except Exception as e:
             result_text = f"Error running {name}: {e}"
             session_manager.log_public(session_id, "ERROR", result_text)
             session_manager.record_tool_call(session_id, name, args, str(e), success=False)
@@ -179,9 +234,7 @@ def build_graph():
 
     graph.set_entry_point("build_context")
     graph.add_edge("build_context", "agent_decide")
-    graph.add_conditional_edges(
-        "agent_decide", route_after_agent, {"execute_tool": "execute_tool", END: END}
-    )
+    graph.add_conditional_edges("agent_decide", route_after_agent, {"execute_tool": "execute_tool", END: END})
     graph.add_edge("execute_tool", "build_context")
 
     return graph.compile()

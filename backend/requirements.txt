@@ -8,3 +8,32 @@ langchain-groq==0.2.0
 langgraph==0.2.28
 python-multipart==0.0.9
 pydantic-settings==2.5.2
+scikit-learn==1.5.2
+
+# --- semantic tool retrieval (Qdrant + BGE-M3) ---
+qdrant-client==1.18.0
+
+# NOTE: deliberately using sentence-transformers instead of FlagEmbedding.
+# FlagEmbedding's __init__.py eagerly imports its entire package on
+# `from FlagEmbedding import ...`, including unrelated Gemma-based reranker
+# code we never use -- so any breaking change anywhere in transformers'
+# Gemma2 internals (HF has repeatedly refactored this: symbols removed in
+# 4.48, 4.52, and again in 5.0) broke our import even though we only ever
+# wanted bge-reranker-v2-m3, which has nothing to do with Gemma. We hit
+# this twice with two different error messages before switching approach --
+# see app/agent/embeddings.py and app/agent/reranker.py for the fix.
+#
+# sentence-transformers loads only the specific model requested via the
+# standard, much more stable transformers AutoModel/AutoTokenizer API.
+# BGE-M3 and bge-reranker-v2-m3 are both architecturally just XLM-RoBERTa,
+# one of the most stable, long-supported model families in transformers --
+# and BAAI's own model cards explicitly document sentence-transformers as a
+# supported loading path, so this isn't a workaround.
+sentence-transformers==3.3.1
+
+# transformers 5.0.0 (released 2026) made large breaking API removals with
+# limited backward-compat shims yet; capping below it until the ecosystem
+# (including sentence-transformers itself) has caught up and been tested
+# against it. The lower bound just needs reasonably modern XLM-RoBERTa/
+# AutoModel support, which has been stable for a long time.
+transformers>=4.46.0,<5.0.0

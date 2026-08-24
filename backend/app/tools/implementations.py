@@ -17,6 +17,9 @@ suggestions -- giving the agent what it needs to self-correct or ask the
 user, instead of guessing or claiming a change happened when it didn't.
 """
 
+import ast
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -323,6 +326,146 @@ def sort_dataset_impl(df: pd.DataFrame, column: str, ascending: bool = True):
     return new_df, f"Sorted dataset by '{column}' ({'ascending' if ascending else 'descending'})."
 
 
+def knn_impute_impl(df: pd.DataFrame, columns: list[str], n_neighbors: int = 5):
+    # Imported lazily so a missing/broken scikit-learn install only breaks
+    # this one tool, not the whole app.
+    from sklearn.impute import KNNImputer
+
+    resolved = resolve_columns(df, columns)
+    for col in resolved:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            raise ValueError(f"Column '{col}' is not numeric; convert its dtype first.")
+
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(numeric_cols) < 1:
+        raise ValueError("No numeric columns available to impute from.")
+
+    n_neighbors = max(1, min(n_neighbors, len(df) - 1)) if len(df) > 1 else 1
+
+    new_df = df.copy()
+    imputer = KNNImputer(n_neighbors=n_neighbors)
+    imputed_block = imputer.fit_transform(new_df[numeric_cols])
+    imputed_df = pd.DataFrame(imputed_block, columns=numeric_cols, index=new_df.index)
+
+    filled_counts = {}
+    for col in resolved:
+        n_missing_before = int(new_df[col].isnull().sum())
+        new_df[col] = imputed_df[col]
+        filled_counts[col] = n_missing_before
+
+    summary = ", ".join(f"{c}: {n}" for c, n in filled_counts.items())
+    return new_df, f"KNN-imputed missing values (n_neighbors={n_neighbors}) in: {summary}."
+
+
+def interpolate_missing_impl(df: pd.DataFrame, column: str, method: str = "linear", order: int = 2):
+    column = resolve_column(df, column)
+    if not pd.api.types.is_numeric_dtype(df[column]):
+        raise ValueError(f"Column '{column}' is not numeric; convert its dtype first.")
+    if method not in ("linear", "polynomial", "spline"):
+        raise ValueError("method must be 'linear', 'polynomial', or 'spline'.")
+
+    new_df = df.copy()
+    n_missing_before = int(new_df[column].isnull().sum())
+
+    try:
+        if method == "linear":
+            new_df[column] = new_df[column].interpolate(method="linear", limit_direction="both")
+        else:
+            new_df[column] = new_df[column].interpolate(method=method, order=order, limit_direction="both")
+    except Exception as e:
+        raise ValueError(f"Interpolation failed for '{column}' with method='{method}': {e}")
+
+    n_missing_after = int(new_df[column].isnull().sum())
+    filled = n_missing_before - n_missing_after
+    return new_df, f"Interpolated {filled} missing value(s) in '{column}' using method='{method}'."
+
+
+def fill_missing_sequential_impl(df: pd.DataFrame, column: str, direction: str = "forward"):
+    column = resolve_column(df, column)
+    if direction not in ("forward", "backward"):
+        raise ValueError("direction must be 'forward' or 'backward'.")
+
+    new_df = df.copy()
+    n_missing_before = int(new_df[column].isnull().sum())
+    if direction == "forward":
+        new_df[column] = new_df[column].ffill()
+    else:
+        new_df[column] = new_df[column].bfill()
+    n_missing_after = int(new_df[column].isnull().sum())
+    filled = n_missing_before - n_missing_after
+
+    return new_df, f"Filled {filled} missing value(s) in '{column}' using {direction}-fill."
+
+
+def winsorize_column_impl(df: pd.DataFrame, column: str, lower_percentile: float = 0.05, upper_percentile: float = 0.95):
+    column = resolve_column(df, column)
+    if not pd.api.types.is_numeric_dtype(df[column]):
+        raise ValueError(f"Column '{column}' is not numeric; convert its dtype first.")
+    if not (0 <= lower_percentile < upper_percentile <= 1):
+        raise ValueError("Require 0 <= lower_percentile < upper_percentile <= 1.")
+
+    new_df = df.copy()
+    lower_bound = new_df[column].quantile(lower_percentile)
+    upper_bound = new_df[column].quantile(upper_percentile)
+    before = new_df[column].copy()
+    new_df[column] = new_df[column].clip(lower=lower_bound, upper=upper_bound)
+    n_changed = int((before != new_df[column]).sum())
+
+    return new_df, (
+        f"Winsorized '{column}' at [{lower_percentile:.0%}, {upper_percentile:.0%}] "
+        f"(bounds=[{round(float(lower_bound), 2)}, {round(float(upper_bound), 2)}]), "
+        f"{n_changed} value(s) capped."
+    )
+
+
+def _try_parse_json_like(value):
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    try:
+        parsed = ast.literal_eval(value)
+        return parsed if isinstance(parsed, dict) else None
+    except (ValueError, SyntaxError):
+        return None
+
+
+def expand_json_column_impl(df: pd.DataFrame, column: str, keys: list[str] | None = None, drop_original: bool = True):
+    column = resolve_column(df, column)
+    new_df = df.copy()
+
+    parsed_series = new_df[column].apply(_try_parse_json_like)
+    n_parsed = int(parsed_series.notnull().sum())
+    if n_parsed == 0:
+        raise ValueError(f"No valid JSON/dict values found in '{column}'.")
+
+    if keys is None:
+        found_keys: list[str] = []
+        for parsed in parsed_series.dropna():
+            for k in parsed.keys():
+                if k not in found_keys:
+                    found_keys.append(k)
+        keys = found_keys
+
+    if not keys:
+        raise ValueError(f"No keys found to expand from '{column}'.")
+
+    for key in keys:
+        new_col_name = f"{column}_{key}"
+        if new_col_name in new_df.columns and new_col_name != column:
+            raise ValueError(f"A column named '{new_col_name}' already exists.")
+        new_df[new_col_name] = parsed_series.apply(lambda d, k=key: d.get(k) if isinstance(d, dict) else None)
+
+    if drop_original:
+        new_df = new_df.drop(columns=[column])
+
+    return new_df, f"Expanded {n_parsed} JSON value(s) in '{column}' into new column(s) for keys: {keys}."
+
+
 # name -> callable(df, **args) -> (new_df, description)
 TOOL_EXECUTORS = {
     "drop_duplicates": drop_duplicates_impl,
@@ -340,4 +483,9 @@ TOOL_EXECUTORS = {
     "remove_type_anomalies": remove_type_anomalies_impl,
     "clip_numeric_range": clip_numeric_range_impl,
     "sort_dataset": sort_dataset_impl,
+    "knn_impute": knn_impute_impl,
+    "interpolate_missing": interpolate_missing_impl,
+    "fill_missing_sequential": fill_missing_sequential_impl,
+    "winsorize_column": winsorize_column_impl,
+    "expand_json_column": expand_json_column_impl,
 }

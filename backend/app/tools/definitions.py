@@ -242,6 +242,91 @@ def sort_dataset(column: str, ascending: bool = True) -> str:
     return "handled_by_executor"
 
 
+@tool
+def knn_impute(columns: List[str], n_neighbors: int = 5) -> str:
+    """Fill missing values in one or more numeric columns using K-Nearest
+    Neighbors imputation -- a smarter alternative to mean/median that fills
+    each missing value based on similar rows (measured across all numeric
+    columns), rather than a single dataset-wide average. Best when columns
+    are related to each other (e.g. filling 'age' using patterns across
+    'salary' and 'tenure' too).
+
+    Args:
+        columns: The numeric column(s) to fill missing values in.
+        n_neighbors: How many similar rows to average over. Lower values
+            follow local patterns more closely; higher values are smoother
+            and more conservative.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def interpolate_missing(column: str, method: str = "linear", order: int = 2) -> str:
+    """Fill missing values in a numeric column by interpolating between the
+    surrounding known values. Well suited to sequential or time-ordered data
+    (e.g. a daily reading with a few gaps) where nearby values are a good
+    guide, unlike mean/median which ignores row order entirely.
+
+    Args:
+        column: The numeric column to interpolate.
+        method: 'linear' (straight line between known points), 'polynomial',
+            or 'spline' (both curve-fit and need `order`).
+        order: The polynomial/spline order to use (ignored for 'linear').
+    """
+    return "handled_by_executor"
+
+
+@tool
+def fill_missing_sequential(column: str, direction: str = "forward") -> str:
+    """Fill missing values by carrying the nearest known value forward or
+    backward down the column -- e.g. a status that stays the same until it
+    next changes. Different from handle_missing_values, which uses a
+    dataset-wide statistic instead of neighboring rows.
+
+    Args:
+        column: The column to fill.
+        direction: 'forward' (carry the last known value down) or
+            'backward' (carry the next known value up).
+    """
+    return "handled_by_executor"
+
+
+@tool
+def winsorize_column(column: str, lower_percentile: float = 0.05, upper_percentile: float = 0.95) -> str:
+    """Cap extreme values in a numeric column at specific percentiles (e.g.
+    clip anything below the 5th percentile or above the 95th). Unlike
+    handle_outliers (which uses the IQR statistical rule) or
+    clip_numeric_range (which uses domain-known fixed bounds you supply),
+    this uses percentile cutoffs -- useful when you want to trim, say, the
+    most extreme 5% on each end regardless of the distribution's shape.
+
+    Args:
+        column: The numeric column to winsorize.
+        lower_percentile: Values below this percentile (0 to 1) are capped
+            up to it.
+        upper_percentile: Values above this percentile (0 to 1) are capped
+            down to it.
+    """
+    return "handled_by_executor"
+
+
+@tool
+def expand_json_column(column: str, keys: Optional[List[str]] = None, drop_original: bool = True) -> str:
+    """Expand a column containing JSON objects (or Python-dict-like strings)
+    into separate new columns, one per key -- e.g. a column holding
+    {"city": "Mumbai", "zip": "400001"} becomes two new columns 'city' and
+    'zip'. Rows that aren't valid JSON/dict objects are left blank in the
+    new columns rather than causing an error.
+
+    Args:
+        column: The column containing JSON/dict values to expand.
+        keys: Specific keys to extract as new columns. Omit to extract every
+            key found across the column's values.
+        drop_original: Whether to remove the original JSON column afterward.
+    """
+    return "handled_by_executor"
+
+
 # ============================== ANALYSIS TOOLS ==============================
 # Read-only: these NEVER modify the dataset or create an undo/redo version.
 # Use them to answer questions or inform a decision before (or instead of)
@@ -335,6 +420,11 @@ ALL_TOOLS = [
     remove_type_anomalies,
     clip_numeric_range,
     sort_dataset,
+    knn_impute,
+    interpolate_missing,
+    fill_missing_sequential,
+    winsorize_column,
+    expand_json_column,
     profile_column,
     compute_correlation,
     detect_outliers_report,
