@@ -12,27 +12,20 @@ The core decision graph.
                            END
 
 - build_context: pulls the CURRENT dataframe's metadata (never raw rows) and
-  the running conversation summary into state. Runs at the start of a turn
-  and again after every tool call, so the model always reasons/summarizes
-  against fresh numbers.
+  the running conversation summary into state.
 - agent_decide: routes this turn's tools via semantic retrieval + rerank
-  (see tool_router.py) instead of binding the full tool catalog. If routing
-  confidence is too low (the request is too vague to confidently match to a
-  specific action), it asks the user a clarifying question instead of
-  guessing -- no tools are bound for that call, so a wrong guess is
-  structurally impossible, not just discouraged by the prompt. Otherwise it
-  binds the routed subset and lets the LLM decide whether to call a tool or
-  reply directly. Wrapped in retry logic for transient failures, with a
-  narrower-tool-set fallback retry for Groq's malformed-tool-call failures.
+  (see tool_router.py). The system prompt is rebuilt EVERY time with the
+  exact tool names actually being bound this call (see prompts.py) -- this
+  is deliberate: a prompt that names a tool NOT in the current request's
+  bound schema causes Groq to reject the whole call with "tool call
+  validation failed: ... not in request.tools" once the model tries to use
+  it. This must stay true across every attempt, including the narrower
+  fallback retry below, which binds a different (smaller) tool set and so
+  needs its own rebuilt prompt, not the original one reused.
 - execute_tool: validates the proposed call against the real function
-  signature, blocks duplicate calls within the same turn (loop guard),
-  dispatches to the mutating registry (creates a new dataset version) or
-  the analysis registry (read-only), and records both a UI-facing log line
-  and a structured tool_history entry.
-
-Tool results are prefixed "Success:" / "Result:" / "Error:" / "Skipped:" on
-purpose -- the system prompt requires the model to stay grounded in that
-literal prefix rather than assuming a change happened.
+  signature, blocks duplicate calls within the same turn, dispatches to the
+  mutating or analysis registry, and records both a UI log line and a
+  structured tool_history entry.
 """
 
 import json
@@ -55,7 +48,6 @@ from app.tools.definitions import ALL_TOOLS
 from app.tools.implementations import TOOL_EXECUTORS
 
 _ALL_EXECUTORS_FOR_VALIDATION = {**TOOL_EXECUTORS, **ANALYSIS_TOOL_EXECUTORS}
-
 _TOOL_SCHEMA_ERROR_MARKERS = ("tool call validation failed", "not in request.tools", "tool_use_failed")
 
 
@@ -73,20 +65,14 @@ def build_context_node(state: AgentState) -> dict:
 
 def agent_decide_node(state: AgentState) -> dict:
     metadata_json = json.dumps(state["metadata"], indent=2)
-    system_prompt_text = build_system_prompt(metadata_json, state.get("summary", ""))
-    messages = [SystemMessage(content=system_prompt_text)] + state["messages"]
+    summary = state.get("summary", "")
 
     context_text = accumulate_turn_text(state["messages"])
     try:
         routing = route_tools(context_text)
     except Exception as e:
-        # Qdrant or the embedding/reranker model itself is unreachable --
-        # this is an infrastructure outage, not an ambiguous request, so
-        # don't ask the user to clarify. Degrade to the pre-retrieval
-        # behavior (bind everything) rather than failing the whole turn.
         session_manager.log_public(
-            state["session_id"], "ERROR",
-            f"Tool retrieval unavailable, falling back to full tool set: {e}",
+            state["session_id"], "ERROR", f"Tool retrieval unavailable, falling back to full tool set: {e}"
         )
         routing = {"tools": ALL_TOOLS, "confidence": 1.0, "needs_clarification": False}
 
@@ -97,7 +83,7 @@ def agent_decide_node(state: AgentState) -> dict:
             f"Routing confidence too low ({routing['confidence']:.2f}) -- asking for clarification instead of guessing a tool.",
         )
         clarify_system = SystemMessage(
-            content=system_prompt_text
+            content=build_system_prompt(metadata_json, summary, tool_names=[])
             + "\n\nThe user's last message doesn't clearly match a specific supported action "
               "(nothing in the tool catalog matched with confidence). Do NOT guess which action "
               "they want and do NOT call a tool. Ask one short, specific clarifying question -- "
@@ -112,22 +98,29 @@ def agent_decide_node(state: AgentState) -> dict:
         return {"messages": [response]}
 
     routed_tools = routing["tools"]
+    routed_names = [t.name for t in routed_tools]
+    system_msg = SystemMessage(content=build_system_prompt(metadata_json, summary, tool_names=routed_names))
+    messages = [system_msg] + state["messages"]
 
     try:
         llm = get_llm_with_tools(tools=routed_tools)
         response = call_with_retry(llm.invoke, messages)
     except Exception as e:
         if _looks_like_tool_schema_error(e):
-            # The model malformed a tool call given this schema. Retrying
-            # identically would likely fail identically (temperature=0) --
-            # fall back to just the top 3 already-reranked tools (a
-            # smaller, still-relevant schema) and try once more.
             session_manager.log_public(
                 state["session_id"], "ERROR", f"Tool schema error, retrying with a narrower tool set: {e}"
             )
             try:
-                narrow_llm = get_llm_with_tools(tools=routed_tools[:3])
-                response = call_with_retry(narrow_llm.invoke, messages, max_attempts=1)
+                narrow_tools = routed_tools[:3]
+                narrow_names = [t.name for t in narrow_tools]
+                # MUST rebuild the system prompt here too -- it has to name
+                # exactly narrow_tools, not the original (larger) routed set,
+                # or this retry hits the exact same "not in request.tools"
+                # failure the fallback is supposed to fix.
+                narrow_system = SystemMessage(content=build_system_prompt(metadata_json, summary, tool_names=narrow_names))
+                narrow_messages = [narrow_system] + state["messages"]
+                narrow_llm = get_llm_with_tools(tools=narrow_tools)
+                response = call_with_retry(narrow_llm.invoke, narrow_messages, max_attempts=1)
             except Exception as e2:
                 session_manager.log_public(state["session_id"], "ERROR", f"Narrow retry also failed: {e2}")
                 response = AIMessage(

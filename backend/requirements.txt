@@ -11,7 +11,7 @@ pydantic-settings==2.5.2
 scikit-learn==1.5.2
 
 # --- semantic tool retrieval (Qdrant + BGE-M3) ---
-qdrant-client==1.18.0
+qdrant-client
 
 # NOTE: deliberately using sentence-transformers instead of FlagEmbedding.
 # FlagEmbedding's __init__.py eagerly imports its entire package on

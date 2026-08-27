@@ -1,17 +1,6 @@
-"""
-Reliability helpers used by the agent graph:
+"""Retry logic + tool-call validation helpers used by the agent graph."""
 
-- call_with_retry(): retries transient failures (timeouts, rate limits,
-  connection errors) with exponential backoff. Non-transient errors
-  (bad input, programming errors) are re-raised immediately -- retrying
-  those would just waste time and tokens.
-
-- validate_tool_call(): checks a tool call the LLM proposed against the
-  REAL function signature before it ever touches the dataset. Catches
-  unknown tool names, missing required arguments, and unexpected
-  arguments (all symptoms of a hallucinated or malformed tool call) and
-  turns them into a friendly, user-facing message instead of a stack trace.
-"""
+from __future__ import annotations
 
 import inspect
 import time
@@ -31,16 +20,8 @@ class RetryableError(Exception):
 
 
 _TRANSIENT_MARKERS = (
-    "timeout",
-    "timed out",
-    "rate limit",
-    "rate_limit",
-    "429",
-    "502",
-    "503",
-    "504",
-    "connection",
-    "temporarily unavailable",
+    "timeout", "timed out", "rate limit", "rate_limit", "429", "502", "503",
+    "504", "connection", "temporarily unavailable",
 )
 
 
@@ -61,7 +42,7 @@ def call_with_retry(fn: Callable, *args, max_attempts: int | None = None, **kwar
     for attempt in range(1, max_attempts + 1):
         try:
             return fn(*args, **kwargs)
-        except Exception as e:  # noqa: BLE001 - intentionally broad, classified below
+        except Exception as e:  # noqa: BLE001 - intentionally broad, classified above
             last_err = e
             if not _looks_transient(e) or attempt == max_attempts:
                 raise
