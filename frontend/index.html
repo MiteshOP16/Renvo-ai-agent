@@ -2,210 +2,1466 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>DataCleanAI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DataClean AI — Purpose-Built Autonomous Data Workbench</title>
+<meta name="description" content="Production-grade agentic data cleaning platform for data analysts and data scientists." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
 <style>
-  :root {
-    --bg: #0f1115; --panel: #171a21; --border: #2a2e38;
-    --text: #e6e8ec; --muted: #8b909c; --accent: #5b8def;
-    --ok: #4caf7d; --err: #e0665e;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
-    background: var(--bg); color: var(--text); height: 100vh; display: flex;
-  }
-  .col { display: flex; flex-direction: column; height: 100vh; }
-  .sidebar { width: 320px; border-right: 1px solid var(--border); padding: 16px; overflow-y: auto; }
-  .main { flex: 1; }
-  .rightbar { width: 320px; border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; }
-  h1 { font-size: 16px; margin: 0 0 12px; }
-  h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 16px 0 8px; }
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-  button {
-    background: var(--accent); color: white; border: none; border-radius: 8px;
-    padding: 8px 14px; cursor: pointer; font-size: 13px;
-  }
-  button:disabled { background: #3a3f4b; cursor: not-allowed; color: var(--muted); }
-  button.secondary { background: #2a2e38; }
-  input[type=file] { font-size: 12px; }
-  .col-actions { display: flex; gap: 8px; margin-top: 10px; }
-  #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
-  .msg.user { align-self: flex-end; background: var(--accent); color: white; }
-  .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
-  .inputbar { border-top: 1px solid var(--border); padding: 14px; display: flex; gap: 10px; }
-  .inputbar input { flex: 1; padding: 10px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 14px; }
-  .col-item { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
-  .col-item .name { color: var(--text); }
-  .col-item .meta { color: var(--muted); }
-  .log-line { font-size: 11px; padding: 5px 0; border-bottom: 1px solid var(--border); }
-  .log-line .lvl-TOOL { color: var(--ok); font-weight: 600; }
-  .log-line .lvl-SYSTEM { color: var(--muted); }
-  .log-line .lvl-ERROR { color: var(--err); font-weight: 600; }
-  .empty { color: var(--muted); font-size: 13px; text-align: center; margin-top: 40px; }
-  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #2a2e38; color: var(--muted); }
+/* ─── DESIGN TOKENS (HIGH CONTRAST, EQUAL LIGHT & DARK) ─── */
+:root {
+  /* Default: Dark Theme (Ink/Charcoal) */
+  --bg-app: #0b0f17;
+  --bg-surface: #111827;
+  --bg-surface-raised: #1e293b;
+  --bg-card: #162032;
+  --bg-card-hover: #1e2d42;
+  --border: #1f2937;
+  --border-subtle: #161e2e;
+  --border-focus: #8b95f6;
+  
+  /* High-Contrast Typography Tokens */
+  --text-main: #f8fafc;   /* 16.96:1 contrast on #111827 */
+  --text-muted: #cbd5e1;  /* 11.95:1 contrast on #111827 (Muted >= 7:1) */
+  --text-subtle: #94a3b8; /* 6.92:1 contrast (For disabled/placeholders) */
+  
+  /* Split Accent Tokens */
+  --accent: #8b95f6;      /* Text, rings, active links (6.53:1 contrast) */
+  --accent-solid: #4f5bd5;/* Primary button fill (5.54:1 contrast w/ white) */
+  --accent-hover: #404cc4;
+  --accent-light: rgba(139, 149, 246, 0.12);
+
+  /* High-Contrast Semantic Colors */
+  --success: #34d399;     /* 9.23:1 contrast */
+  --success-bg: rgba(52, 211, 153, 0.12);
+  --warning: #fbbf24;     /* 10.63:1 contrast */
+  --warning-bg: rgba(251, 191, 36, 0.12);
+  --error: #f87171;       /* 6.41:1 contrast */
+  --error-bg: rgba(248, 113, 113, 0.12);
+  --info: #38bdf8;        /* 8.12:1 contrast */
+  --info-bg: rgba(56, 189, 248, 0.12);
+
+  /* Font Families */
+  --font-heading: 'Manrope', -apple-system, sans-serif;
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Type Scale Tokens */
+  --text-11: 0.6875rem; /* 11px micro labels */
+  --text-12: 0.75rem;   /* 12px captions & metadata */
+  --text-13: 0.8125rem; /* 13px grid & dense UI */
+  --text-14: 0.875rem;  /* 14px default body & inputs */
+  --text-16: 1rem;      /* 16px section headings */
+  --text-20: 1.25rem;   /* 20px page titles */
+  --text-24: 1.5rem;    /* 24px headline numbers */
+
+  /* Line Heights */
+  --lh-body: 1.5;
+  --lh-dense: 1.4;
+  --lh-heading: 1.25;
+  --lh-code: 1.6;
+
+  /* Radius (Strict 6px controls / 10px panels) */
+  --radius-lg: 10px;
+  --radius-md: 6px;
+  --radius-sm: 4px;
+
+  --sidebar-w: 240px;
+  --recipe-w: 390px;
+  --transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Light Theme (Clean Warm Off-White) */
+.light-theme {
+  --bg-app: #fafafc;
+  --bg-surface: #ffffff;
+  --bg-surface-raised: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --border: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --border-focus: #4f5bd5;
+  
+  --text-main: #0f172a;   /* 17.85:1 contrast */
+  --text-muted: #334155;  /* 10.35:1 contrast on #FFFFFF */
+  --text-subtle: #64748b; /* 4.76:1 contrast */
+  
+  --accent: #4f5bd5;
+  --accent-solid: #4f5bd5;
+  --accent-hover: #404cc4;
+  --accent-light: rgba(79, 91, 213, 0.08);
+
+  --success: #047857;   /* 5.48:1 contrast */
+  --success-bg: rgba(4, 120, 87, 0.08);
+  --warning: #b45309;   /* 5.02:1 contrast */
+  --warning-bg: rgba(180, 83, 9, 0.08);
+  --error: #b91c1c;     /* 6.47:1 contrast */
+  --error-bg: rgba(185, 28, 28, 0.08);
+  --info: #0369a1;      /* 5.25:1 contrast */
+  --info-bg: rgba(3, 105, 161, 0.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg-app); color: var(--text-main); font-family: var(--font-ui); font-size: 14px; line-height: var(--lh-body); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { font-feature-settings: "tnum", "cv11"; }
+
+h1, h2, h3, h4, .font-heading { font-family: var(--font-heading); font-weight: 600; letter-spacing: -0.015em; line-height: var(--lh-heading); }
+
+/* Selection & Scrollbars */
+::selection { background: var(--accent-light); color: var(--accent); }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ─── App Shell ─── */
+.app-shell { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+
+/* Slim Left Rail Sidebar */
+.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--bg-surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100vh; z-index: 20; }
+.sidebar-header { padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; }
+
+/* Flat Geometric Logomark (No Gradient, No Sparkles) */
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--text-14); font-family: var(--font-heading); letter-spacing: -0.01em; }
+.brand-icon { width: 22px; height: 22px; border-radius: var(--radius-sm); background: var(--accent-solid); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+.brand-icon svg { width: 14px; height: 14px; stroke-width: 2; }
+
+.nav-menu { padding: 10px 8px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); color: var(--text-muted); font-size: var(--text-13); font-weight: 500; cursor: pointer; transition: var(--transition); border-left: 2px solid transparent; }
+.nav-item:hover { background: var(--bg-surface-raised); color: var(--text-main); }
+.nav-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
+.nav-item svg { width: 17px; height: 17px; stroke-width: 1.6; }
+
+/* Sidebar Footer Dataset Card */
+.sidebar-footer { padding: 12px; border-top: 1px solid var(--border-subtle); background: var(--bg-surface); }
+.dataset-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.dataset-card-top { display: flex; align-items: center; justify-content: space-between; }
+.dataset-card-name { font-weight: 600; font-size: var(--text-12); font-family: var(--font-mono); color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
+.dataset-card-sub { font-size: var(--text-11); color: var(--text-subtle); display: flex; align-items: center; gap: 6px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; }
+.status-dot.neutral { background: var(--text-subtle); }
+
+/* ─── Main Wrapper ─── */
+.main-wrapper { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; background: var(--bg-app); }
+
+/* Topbar & Guided Stepper */
+.topbar { height: 48px; background: var(--bg-surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 10; }
+
+.guided-stepper { display: flex; align-items: center; gap: 16px; font-size: var(--text-12); font-weight: 500; color: var(--text-muted); }
+.stepper-item { display: flex; align-items: center; gap: 6px; }
+.stepper-item.active { color: var(--accent); font-weight: 600; }
+.stepper-item.done { color: var(--success); }
+.stepper-num { width: 18px; height: 18px; border-radius: 50%; background: var(--bg-surface-raised); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; font-family: var(--font-mono); }
+.stepper-item.active .stepper-num { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+.stepper-item.done .stepper-num { background: var(--success-bg); border-color: var(--success); color: var(--success); }
+
+.top-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Command Trigger & Buttons */
+.cmd-btn { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: var(--radius-md); background: var(--bg-surface-raised); border: 1px solid var(--border); color: var(--text-muted); font-size: var(--text-13); cursor: pointer; transition: var(--transition); width: 200px; }
+.cmd-btn:hover { border-color: var(--accent); color: var(--text-main); }
+.cmd-kbd { font-family: var(--font-mono); font-size: var(--text-11); padding: 1px 4px; border-radius: 3px; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-subtle); }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--radius-md); font-weight: 500; font-size: var(--text-13); cursor: pointer; transition: var(--transition); border: 1px solid transparent; white-space: nowrap; }
+.btn-primary { background: var(--accent-solid); color: white; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-secondary { background: var(--bg-surface-raised); color: var(--text-main); border-color: var(--border); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-ghost { background: transparent; color: var(--text-muted); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-surface-raised); color: var(--text-main); }
+.btn-destructive { background: var(--error-bg); color: var(--error); border-color: var(--error); }
+.btn-destructive:hover:not(:disabled) { background: var(--error); color: white; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; background: var(--bg-surface-raised) !important; color: var(--text-subtle) !important; border-color: var(--border) !important; }
+
+/* Micro Labels (11px UPPERCASE +0.06em tracking) */
+.micro-label { font-size: var(--text-11); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+
+/* Views Container & Isolation */
+.view-container { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; width: 100%; height: calc(100vh - 48px); }
+.view-panel { display: none; width: 100%; height: 100%; overflow: hidden; position: absolute; inset: 0; }
+.view-panel.active { display: flex; flex-direction: column; }
+
+/* ─── Screen 1: Center Data Grid Workspace Layout ─── */
+.workspace-grid-layout { flex: 1; display: flex; height: 100%; width: 100%; overflow: hidden; position: relative; }
+.center-grid-pane { flex: 1; display: flex; flex-direction: column; height: 100%; background: var(--bg-app); min-width: 0; overflow: hidden; }
+
+/* Proactive Issues Found Banner */
+.issues-banner { background: var(--bg-surface); border-bottom: 1px solid var(--border); padding: 6px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; max-height: 42px; position: relative; z-index: 20; }
+.issues-list-chips { display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; }
+.issue-chip { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--radius-md); background: var(--warning-bg); border: 1px solid var(--warning); color: var(--warning); font-size: var(--text-12); font-weight: 500; white-space: nowrap; }
+.issues-dropdown-card { position: absolute; top: 38px; left: 130px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); z-index: 100; display: flex; flex-direction: column; gap: 6px; min-width: 260px; max-width: 340px; max-height: 240px; overflow-y: auto; }
+
+/* Data Grid Toolbar & Mini Profiles Header */
+.grid-toolbar { padding: 6px 16px; background: var(--bg-surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.search-input { display: flex; align-items: center; gap: 8px; background: var(--bg-surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 10px; height: 30px; width: 220px; transition: var(--transition); }
+.search-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+.search-input input { background: transparent !important; border: none !important; outline: none !important; color: var(--text-main); font-family: var(--font-ui); font-size: var(--text-12); width: 100%; padding: 0; margin: 0; line-height: 1; height: 100%; }
+.search-input input::placeholder { color: var(--text-subtle); }
+.table-wrapper { flex: 1; overflow: auto; position: relative; }
+.data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-family: var(--font-mono); font-size: var(--text-13); line-height: var(--lh-dense); font-feature-settings: "zero"; }
+.data-table th { position: sticky; top: 0; background: var(--bg-surface); color: var(--text-muted); font-weight: 600; font-size: var(--text-12); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border-subtle); z-index: 5; cursor: pointer; user-select: none; white-space: nowrap; }
+.data-table th:hover { color: var(--text-main); background: var(--bg-surface-raised); }
+
+/* Column Header Mini Profile Box */
+.th-profile { display: flex; flex-direction: column; gap: 4px; }
+.th-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.th-name { font-weight: 600; color: var(--text-main); font-family: var(--font-mono); }
+.th-null-bar { height: 3px; background: var(--bg-surface-raised); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+.th-null-fill { height: 100%; background: var(--warning); }
+.th-sparkline { display: flex; align-items: flex-end; gap: 2px; height: 14px; margin-top: 2px; }
+.th-sparkbar { flex: 1; background: var(--accent); opacity: 0.6; border-radius: 1px; }
+
+.data-table td { padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); border-right: 1px solid var(--border-subtle); color: var(--text-main); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.data-table td.num { text-align: right; }
+.data-table tr:hover td { background: var(--bg-card-hover); }
+
+.cell-null { color: var(--text-subtle); font-style: italic; background: rgba(100, 116, 139, 0.06); }
+.cell-changed { background: var(--success-bg) !important; color: var(--success) !important; font-weight: 600 !important; box-shadow: inset 0 0 0 1px var(--success); }
+.cell-outlier { background: var(--warning-bg); color: var(--warning); font-weight: 500; }
+
+/* Column Header Context Menu */
+.col-context-menu { position: absolute; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 4px; display: none; flex-direction: column; gap: 2px; z-index: 50; width: 170px; }
+.col-context-menu.active { display: flex; }
+.menu-item { padding: 6px 10px; font-size: var(--text-12); color: var(--text-main); cursor: pointer; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 8px; }
+.menu-item:hover { background: var(--accent-light); color: var(--accent); }
+
+/* Live Preview Bar (Signature Flow Footer) */
+.preview-bar { background: var(--bg-surface); border-top: 2px solid var(--accent-solid); padding: 10px 16px; display: none; align-items: center; justify-content: space-between; z-index: 15; }
+.preview-bar.active { display: flex; }
+
+/* Collapsible Bottom Copilot Dock */
+.copilot-dock { background: var(--bg-surface); border-top: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; transition: var(--transition); }
+.dock-header { padding: 8px 16px; background: var(--bg-surface-raised); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+.dock-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--bg-surface); }
+
+.prompt-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 14px; background: var(--bg-surface-raised); border: 1px solid var(--border); color: var(--text-muted); font-size: var(--text-12); font-weight: 500; cursor: pointer; transition: var(--transition); user-select: none; }
+.chip:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+.composer-box { display: flex; align-items: flex-end; gap: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; transition: var(--transition); }
+.composer-box:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--accent-light); }
+.composer-input { flex: 1; background: transparent; border: none; outline: none; color: var(--text-main); font-family: var(--font-ui); font-size: var(--text-13); line-height: var(--lh-body); resize: none; min-height: 28px; max-height: 120px; padding: 4px 0; }
+.composer-input::placeholder { color: var(--text-subtle); }
+
+/* Execution Diff Card in Agent Explanation */
+.exec-diff-card { background: var(--bg-surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.exec-diff-header { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: var(--text-12); color: var(--text-main); }
+.diff-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: var(--text-11); font-weight: 600; background: var(--success-bg); color: var(--success); border: 1px solid var(--success); }
+.diff-grid { display: flex; flex-direction: column; gap: 4px; font-family: var(--font-mono); font-size: var(--text-12); }
+.diff-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--bg-surface); border-radius: var(--radius-sm); border-left: 3px solid var(--success); }
+.val-before { color: var(--error); text-decoration: line-through; opacity: 0.85; }
+.val-arrow { color: var(--text-subtle); }
+.val-after { color: var(--success); font-weight: 600; }
+
+/* Round-Shaped Very Slow Circular Ring Loader */
+.round-loader { 
+  width: 16px; 
+  height: 16px; 
+  border: 2px solid rgba(79, 70, 229, 0.15); 
+  border-top-color: var(--accent); 
+  border-radius: 50%; 
+  /* FIXED: Changed 25s linear to a smooth 1.2s cubic-bezier */
+  animation: slow-spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite; 
+  flex-shrink: 0; 
+  display: inline-block; 
+  vertical-align: middle; 
+}
+@keyframes slow-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.agent-activity-banner { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08); transition: opacity 0.3s ease; }
+.activity-title { font-weight: 500; font-size: var(--text-12); color: var(--text-main); }
+
+/* Interactive Drag Resizer Handles */
+.panel-resizer { width: 6px; min-width: 6px; background: transparent; cursor: col-resize; position: relative; z-index: 30; transition: background 0.15s ease; user-select: none; }
+.panel-resizer:hover, .panel-resizer.dragging { background: var(--accent); }
+.panel-resizer::after { content: ''; position: absolute; top: 50%; left: 1px; transform: translateY(-50%); width: 4px; height: 28px; background: var(--text-subtle); border-radius: 2px; opacity: 0.35; transition: opacity 0.15s ease; }
+.panel-resizer:hover::after, .panel-resizer.dragging::after { opacity: 1; background: white; }
+
+/* ─── SCREEN 2: DATA PROFILING LAYOUT ─── */
+.profiling-layout { flex: 1; padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; background: var(--bg-app); }
+.profiling-summary-strip { display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; }
+.summary-health-box { display: flex; align-items: center; gap: 16px; min-width: 240px; }
+.gauge-ring { position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.gauge-ring svg { width: 48px; height: 48px; transform: rotate(-90deg); }
+.gauge-score { position: absolute; font-family: var(--font-heading); font-weight: 700; font-size: var(--text-13); color: var(--text-main); }
+.health-title { font-weight: 600; font-size: var(--text-14); color: var(--text-main); font-family: var(--font-heading); }
+.health-sub { font-size: var(--text-12); color: var(--text-muted); margin-top: 2px; }
+
+.summary-metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 12px; flex: 1; }
+.stat-tile { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.stat-val { font-family: var(--font-mono); font-weight: 700; font-size: var(--text-16); color: var(--text-main); line-height: 1.2; }
+.stat-lbl { font-size: var(--text-11); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+
+.profiling-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.col-card-prof { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: var(--transition); }
+.col-card-prof:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+.col-type { font-family: var(--font-mono); font-size: var(--text-11); background: var(--bg-surface-raised); padding: 2px 6px; border-radius: var(--radius-sm); color: var(--accent); font-weight: 500; }
+.sparkline-wrap { display: flex; align-items: flex-end; gap: 4px; height: 36px; background: var(--bg-surface-raised); padding: 6px 8px; border-radius: var(--radius-sm); }
+.sparkbar { flex: 1; background: var(--accent-solid); opacity: 0.85; border-radius: 2px 2px 0 0; min-height: 4px; }
+
+/* Right Panel Integrated Tabs & Chat Workbench */
+.recipe-panel { width: var(--recipe-w); min-width: var(--recipe-w); background: var(--bg-surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+.right-tab-header { padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-surface-raised); display: flex; align-items: center; justify-content: space-between; }
+.right-tabs { display: flex; align-items: center; gap: 4px; background: var(--bg-surface); padding: 3px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); }
+.right-tab-btn { padding: 4px 10px; font-size: var(--text-12); font-weight: 500; color: var(--text-muted); border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; gap: 6px; user-select: none; border: none; background: transparent; }
+.right-tab-btn:hover { color: var(--text-main); }
+.right-tab-btn.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+
+.right-tab-content { flex: 1; display: none; flex-direction: column; overflow: hidden; height: calc(100% - 46px); position: relative; }
+.right-tab-content.active { display: flex; }
+
+.chat-stream-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+/* User & Agent Chat Message Bubbles */
+.chat-msg-user { align-self: flex-end; max-width: 88%; background: var(--accent-solid); color: #ffffff; padding: 8px 12px; border-radius: 12px 12px 2px 12px; font-size: var(--text-13); line-height: var(--lh-body); word-break: break-word; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.chat-msg-user-meta { font-size: 10px; opacity: 0.75; text-align: right; margin-top: 3px; }
+
+.chat-msg-agent { align-self: flex-start; width: 100%; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: var(--text-13); line-height: var(--lh-body); }
+.chat-msg-agent-header { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: var(--text-12); color: var(--accent); }
+
+.right-composer-dock { padding: 10px; background: var(--bg-surface); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+
+.recipe-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.recipe-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.recipe-item-top { display: flex; align-items: center; justify-content: space-between; }
+.recipe-item-title { font-weight: 600; font-size: var(--text-13); color: var(--text-main); }
+.recipe-item-sub { font-size: var(--text-11); color: var(--text-muted); }
+.recipe-item-actions { display: flex; align-items: center; gap: 6px; margin-top: 4px; border-top: 1px solid var(--border-subtle); padding-top: 6px; }
+
+/* Toast Notifications */
+.toast-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; pointer-events: none; }
+.toast { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; font-size: var(--text-13); color: var(--text-main); box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 8px; pointer-events: auto; animation: toast-in 0.2s ease-out; }
+.toast.success { border-left: 3px solid var(--success); }
+.toast.info { border-left: 3px solid var(--accent-solid); }
+@keyframes toast-in { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
+
+/* Command Palette Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); display: none; align-items: flex-start; justify-content: center; padding-top: 80px; z-index: 100; }
+.modal-overlay.active { display: flex; }
+.cmd-modal { width: 100%; max-width: 520px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); overflow: hidden; display: flex; flex-direction: column; }
+.cmd-modal-header { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.cmd-modal-header input { flex: 1; background: transparent; border: none; outline: none; color: var(--text-main); font-size: var(--text-14); font-family: var(--font-ui); }
+.cmd-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+.cmd-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: var(--radius-md); color: var(--text-main); font-size: var(--text-13); cursor: pointer; transition: var(--transition); }
+.cmd-item:hover, .cmd-item.selected { background: var(--accent-light); color: var(--accent); }
+.cmd-item-left { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 </style>
 </head>
 <body>
 
-<div class="sidebar col">
-  <h1>📊 DataCleanAI</h1>
-  <div class="panel">
-    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" />
-    <div class="col-actions">
-      <button id="uploadBtn">Upload dataset</button>
+<div class="app-shell" id="appShell">
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Column Header Context Menu -->
+  <div class="col-context-menu" id="colContextMenu">
+    <div class="menu-item" onclick="applyColAction('impute')"><i data-lucide="wand-2" style="width:14px;"></i> Fill missing values</div>
+    <div class="menu-item" onclick="applyColAction('outliers')"><i data-lucide="shield-alert" style="width:14px;"></i> Remove outliers</div>
+    <div class="menu-item" onclick="applyColAction('rename')"><i data-lucide="type" style="width:14px;"></i> Rename column</div>
+    <div class="menu-item" onclick="applyColAction('drop')"><i data-lucide="trash-2" style="width:14px;"></i> Drop column</div>
+  </div>
+
+  <!-- ─── SLIM LEFT RAIL SIDEBAR ─── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <!-- Flat Geometric Square Logomark (No Gradient, No Sparkles) -->
+        <div class="brand-icon"><i data-lucide="square"></i></div>
+        <span>DataClean AI</span>
+      </div>
+      <button class="btn btn-ghost" style="padding:4px;" id="themeToggleBtn" title="Toggle Light/Dark Theme">
+        <i data-lucide="moon" id="themeIcon" style="width:15px;height:15px;"></i>
+      </button>
     </div>
-    <div id="uploadStatus" style="font-size:12px;color:var(--muted);margin-top:8px;"></div>
-  </div>
 
-  <h2>Dataset overview</h2>
-  <div class="panel" id="overview"><div class="empty">Upload a dataset to see column info</div></div>
+    <!-- Navigation Menu (Nav Icons 17px) -->
+    <nav class="nav-menu">
+      <a class="nav-item active" onclick="switchView('workspace')"><i data-lucide="layout-grid"></i> Workspace</a>
+      <a class="nav-item" onclick="switchView('profiling')"><i data-lucide="bar-chart-3"></i> Profile</a>
+      <a class="nav-item" onclick="switchView('lineage')"><i data-lucide="history"></i> Lineage</a>
+    </nav>
 
-  <div class="col-actions">
-    <button class="secondary" id="undoBtn" disabled>⟲ Undo</button>
-    <button class="secondary" id="redoBtn" disabled>⟳ Redo</button>
-  </div>
-  <div class="col-actions">
-    <button class="secondary" id="downloadBtn" disabled style="width:100%;">⬇ Download cleaned CSV</button>
-  </div>
+    <!-- Compact Dataset Card Footer -->
+    <div class="sidebar-footer">
+      <div class="dataset-card" id="sidebarDatasetCard">
+        <div class="dataset-card-top">
+          <span class="dataset-card-name" id="sidebarFileName">No dataset loaded</span>
+          <span class="status-dot neutral" id="sidebarStatusDot"></span>
+        </div>
+        <div class="dataset-card-sub" id="sidebarFileSub">
+          <span>0 rows × 0 cols</span>
+        </div>
+        <button class="btn btn-secondary" style="width:100%; justify-content:center; margin-top:4px; font-size:var(--text-12); padding:4px;" onclick="triggerFileSelect()">
+          <i data-lucide="upload" style="width:13px;"></i> <span id="uploadBtnLabel">Upload a file</span>
+        </button>
+        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none;" />
+      </div>
+    </div>
+  </aside>
+
+  <!-- Left Sidebar Drag Resizer -->
+  <div class="panel-resizer" id="resizerSidebar" title="Drag to resize sidebar width"></div>
+
+  <!-- ─── MAIN WRAPPER ─── -->
+  <main class="main-wrapper">
+    <!-- Topbar & Guided Stepper -->
+    <header class="topbar">
+      <div class="guided-stepper">
+        <div class="stepper-item done"><div class="stepper-num">1</div> Connect</div>
+        <i data-lucide="chevron-right" style="width:12px;color:var(--text-subtle);"></i>
+        <div class="stepper-item active" id="stepProfile"><div class="stepper-num">2</div> Profile</div>
+        <i data-lucide="chevron-right" style="width:12px;color:var(--text-subtle);"></i>
+        <div class="stepper-item" id="stepClean"><div class="stepper-num">3</div> Clean</div>
+        <i data-lucide="chevron-right" style="width:12px;color:var(--text-subtle);"></i>
+        <div class="stepper-item" id="stepReview"><div class="stepper-num">4</div> Review</div>
+        <i data-lucide="chevron-right" style="width:12px;color:var(--text-subtle);"></i>
+        <div class="stepper-item" id="stepExport"><div class="stepper-num">5</div> Export</div>
+      </div>
+
+      <div class="top-actions">
+        <button class="cmd-btn" id="cmdPaletteBtn" onclick="openCmdPalette()">
+          <i data-lucide="search" style="width:13px;"></i>
+          <span>Search actions...</span>
+          <span class="cmd-kbd" id="cmdKbdShortcut">⌘K</span>
+        </button>
+
+        <button class="btn btn-primary" id="downloadBtn" disabled><i data-lucide="download" style="width:13px;"></i> Export clean CSV</button>
+      </div>
+    </header>
+
+    <!-- Views Container -->
+    <div class="view-container">
+      
+      <!-- SCREEN 1: CENTER DATA GRID WORKSPACE (DATA IS HERO) -->
+      <div class="view-panel active" id="viewWorkspace">
+        <div class="workspace-grid-layout">
+          <!-- Center Data Grid Pane (100% Full Height Data Hero) -->
+          <div class="center-grid-pane">
+            
+            <!-- Proactive Issues Banner (Dynamically Populated) -->
+            <div class="issues-banner" id="issuesBanner" style="display:none;"></div>
+
+            <!-- Grid Toolbar -->
+            <div class="grid-toolbar">
+              <div class="search-input">
+                <i data-lucide="search" style="width:13px; color:var(--text-subtle);"></i>
+                <input type="text" id="dataSearch" placeholder="Filter rows..." oninput="filterTable()" />
+              </div>
+              <div style="font-size:var(--text-12); color:var(--text-muted);" id="dataTableInfo">
+                Showing 0 rows
+              </div>
+            </div>
+
+            <!-- Main Data Table (Gets 100% Vertical Space) -->
+            <div class="table-wrapper" id="dataTableWrap">
+              <div style="text-align:center; padding:60px 20px; color:var(--text-muted); max-width:480px; margin:0 auto;" id="emptyWorkspaceState">
+                <i data-lucide="table" style="width:36px; height:36px; color:var(--accent); margin-bottom:12px; stroke-width:1.5;"></i>
+                <h3 style="font-weight:600; color:var(--text-main); font-size:var(--text-16); margin-bottom:4px;">No dataset loaded</h3>
+                <p style="font-size:var(--text-13); color:var(--text-subtle); margin-bottom:16px;">Upload a CSV or Excel dataset to view the grid, preview transformations, and build cleaning recipes.</p>
+                <div style="display:flex; justify-content:center; gap:10px;">
+                  <button class="btn btn-secondary" onclick="triggerFileSelect()"><i data-lucide="upload" style="width:13px;"></i> Upload a file</button>
+                  <button class="btn btn-secondary" onclick="loadSampleDataset()"><i data-lucide="file-spreadsheet" style="width:13px;"></i> Try a sample dataset</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Preview Action Bar (Signature Interaction) -->
+            <div class="preview-bar" id="previewBar">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span class="tool-badge success">Preview mode</span>
+                <span style="font-weight:600; font-size:var(--text-13);" id="previewTitle">Proposed: Fill missing Age with median (25)</span>
+                <span style="font-size:var(--text-12); color:var(--text-muted);" id="previewImpact">Impact: 2 cells in Age affected</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button class="btn btn-secondary" style="font-size:12px;" onclick="viewPreviewCode()"><i data-lucide="code" style="width:13px;"></i> View Python code</button>
+                <button class="btn btn-secondary" style="font-size:12px;" onclick="cancelPreview()"><i data-lucide="x" style="width:13px;"></i> Reject</button>
+                <button class="btn btn-primary" style="font-size:12px;" onclick="applyPreview()"><i data-lucide="check" style="width:13px;"></i> Apply transformation</button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Panel Drag Resizer -->
+          <div class="panel-resizer" id="resizerRight" title="Drag to resize right chat panel width"></div>
+
+          <!-- Right Panel: Agent Copilot Chat & Cleaning Recipe Workbench -->
+          <aside class="recipe-panel">
+            <div class="right-tab-header">
+              <div class="right-tabs">
+                <button class="right-tab-btn active" id="tabBtnChat" onclick="switchRightTab('chat')">
+                  <i data-lucide="bot" style="width:14px;"></i> Copilot Chat
+                </button>
+                <button class="right-tab-btn" id="tabBtnRecipe" onclick="switchRightTab('recipe')">
+                  <i data-lucide="list-checks" style="width:14px;"></i> Recipe (<span id="recipeCountBadge">0</span>)
+                </button>
+              </div>
+              <div style="display:flex; gap:2px;">
+                <button class="btn btn-ghost" id="undoBtn" disabled title="Undo"><i data-lucide="undo-2" style="width:13px;"></i></button>
+                <button class="btn btn-ghost" id="redoBtn" disabled title="Redo"><i data-lucide="redo-2" style="width:13px;"></i></button>
+              </div>
+            </div>
+
+            <!-- TAB 1: COPILOT CHAT STREAM -->
+            <div class="right-tab-content active" id="rightTabChat">
+              <div class="chat-stream-body" id="chatStreamList">
+                <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md); padding:10px 12px; font-size:var(--text-12); color:var(--text-muted);">
+                  <div style="font-weight:600; color:var(--accent); margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                    <i data-lucide="sparkles" style="width:13px;"></i> DataClean Agent Copilot
+                  </div>
+                  Upload a dataset or load sample data to chat with the AI agent, fill missing values, remove outliers, and clean columns.
+                </div>
+
+                <!-- Live Agent Activity Progress Banner -->
+                <div id="agentActivityBanner" class="agent-activity-banner" style="display:none;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="round-loader"></div>
+                    <span class="activity-title">DataClean Agent is processing instructions...</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Fixed Composer & Prompt Chips Dock at Bottom of Right Chat Sidebar -->
+              <div class="right-composer-dock">
+                <div class="prompt-chips" style="gap:4px;">
+                  <div class="chip" style="font-size:11px; padding:3px 8px;" onclick="sendQuickPrompt('Impute missing values using column median')"><i data-lucide="wand-2" style="width:11px;"></i> Fill missing</div>
+                  <div class="chip" style="font-size:11px; padding:3px 8px;" onclick="sendQuickPrompt('Remove outliers using IQR threshold')"><i data-lucide="shield-alert" style="width:11px;"></i> Remove outliers</div>
+                  <div class="chip" style="font-size:11px; padding:3px 8px;" onclick="sendQuickPrompt('Drop duplicate rows')"><i data-lucide="copy-x" style="width:11px;"></i> Drop duplicates</div>
+                  <div class="chip" style="font-size:11px; padding:3px 8px;" onclick="sendQuickPrompt('Standardize column names to snake_case')"><i data-lucide="type" style="width:11px;"></i> Standardize names</div>
+                </div>
+                <div class="composer-box">
+                  <button class="btn btn-ghost" style="padding:4px; color:var(--text-subtle);" onclick="triggerFileSelect()" title="Attach dataset">
+                    <i data-lucide="paperclip" style="width:15px;height:15px;"></i>
+                  </button>
+                  <textarea class="composer-input" id="msgInput" placeholder="Describe data cleaning instruction..." disabled oninput="onInputTextarea(this)"></textarea>
+                  <button class="btn btn-secondary" id="sendBtn" style="height:32px; padding:0 10px;" disabled><i data-lucide="send" style="width:13px;"></i> Send</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 2: CLEANING RECIPE PIPELINE -->
+            <div class="right-tab-content" id="rightTabRecipe">
+              <div class="recipe-list" id="recipeList">
+                <div style="color:var(--text-subtle); text-align:center; padding:20px; font-size:var(--text-12);">No cleaning steps applied yet</div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- SCREEN 2: DATA PROFILING -->
+      <div class="view-panel" id="viewProfiling">
+        <div class="profiling-layout">
+          <h2 style="font-weight:600; font-size:var(--text-16);">Dataset quality & statistical profile</h2>
+          
+          <!-- Summary Strip at Top of Data Profiling -->
+          <div class="profiling-summary-strip">
+            <div class="summary-health-box">
+              <div class="gauge-ring">
+                <svg width="48" height="48" viewBox="0 0 36 36">
+                  <path class="gauge-circle" stroke="var(--border)" stroke-width="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path class="gauge-circle" id="gaugeArc" stroke="var(--text-subtle)" stroke-width="3" stroke-dasharray="0, 100" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                </svg>
+                <span class="gauge-score" id="healthScore">—</span>
+              </div>
+              <div>
+                <div class="health-title" id="healthStatusText">No data yet</div>
+                <div class="health-sub" id="healthSubText">Upload a dataset to evaluate health</div>
+              </div>
+            </div>
+
+            <div class="summary-metrics-grid">
+              <div class="stat-tile"><div class="stat-val" id="statRows">—</div><div class="stat-lbl">Rows</div></div>
+              <div class="stat-tile"><div class="stat-val" id="statCols">—</div><div class="stat-lbl">Columns</div></div>
+              <div class="stat-tile"><div class="stat-val" id="statNulls">—</div><div class="stat-lbl">Total Nulls</div></div>
+              <div class="stat-tile"><div class="stat-val" id="statOutliers">—</div><div class="stat-lbl">Outliers</div></div>
+            </div>
+          </div>
+
+
+          <div class="profiling-grid" id="profilingContent">
+            <div style="color:var(--text-subtle); padding:20px 0;">No dataset loaded. Upload a file to view statistical distribution profiles.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN 3: LINEAGE & HISTORY -->
+      <div class="view-panel" id="viewLineage">
+        <div style="padding:20px; overflow-y:auto; flex:1;">
+          <h2 style="font-weight:600; font-size:var(--text-16); margin-bottom:14px;">Audit trail & version lineage</h2>
+          <div id="lineageContent" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+      </div>
+
+      <!-- SCREEN 4: EXPORT & CODE -->
+      <div class="view-panel" id="viewExport">
+        <div style="padding:20px; overflow-y:auto; flex:1;">
+          <h2 style="font-weight:600; font-size:var(--text-16); margin-bottom:14px;">Export cleaning pipeline script</h2>
+          <div class="code-preview" style="max-width:760px;">
+            <div class="code-header">
+              <span>Python Pandas cleaning script</span>
+              <button class="btn btn-secondary" style="padding:2px 6px; font-size:var(--text-11);" onclick="copyExportScript()"><i data-lucide="copy" style="width:12px;"></i> Copy script</button>
+            </div>
+            <pre class="code-content" id="exportScriptCode"># Upload dataset to generate automated cleaning script</pre>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
 </div>
 
-<div class="main col">
-  <div id="chat"><div class="empty">Upload a dataset, then ask things like "drop duplicate rows" or "fill missing values in age with median".</div></div>
-  <div class="inputbar">
-    <input id="msgInput" placeholder="Describe the problem you want fixed..." disabled />
-    <button id="sendBtn" disabled>Send</button>
+<!-- COMMAND PALETTE MODAL -->
+<div class="modal-overlay" id="cmdModalOverlay" onclick="closeCmdPalette(event)">
+  <div class="cmd-modal" onclick="event.stopPropagation()">
+    <div class="cmd-modal-header">
+      <i data-lucide="command" style="width:16px; color:var(--accent);"></i>
+      <input type="text" id="cmdInput" placeholder="Type a command or search actions..." oninput="filterCmdList()" onkeydown="handleCmdKey(event)" />
+      <span class="cmd-kbd">ESC</span>
+    </div>
+    <div class="cmd-list" id="cmdList">
+      <div class="cmd-item selected" onclick="runCmd('Impute missing values using column median')">
+        <div class="cmd-item-left"><i data-lucide="wand-2" style="width:14px;"></i> Fill missing values with median</div>
+        <span class="cmd-kbd">Action</span>
+      </div>
+      <div class="cmd-item" onclick="runCmd('Remove outliers using IQR threshold')">
+        <div class="cmd-item-left"><i data-lucide="shield-alert" style="width:14px;"></i> Remove statistical outliers (IQR)</div>
+        <span class="cmd-kbd">Action</span>
+      </div>
+      <div class="cmd-item" onclick="runCmd('Drop duplicate rows')">
+        <div class="cmd-item-left"><i data-lucide="copy-x" style="width:14px;"></i> Deduplicate dataset rows</div>
+        <span class="cmd-kbd">Action</span>
+      </div>
+      <div class="cmd-item" onclick="switchView('export'); closeCmdPalette();">
+        <div class="cmd-item-left"><i data-lucide="code" style="width:14px;"></i> Export Python cleaning script</div>
+        <span class="cmd-kbd">Export</span>
+      </div>
+    </div>
   </div>
-</div>
-
-<div class="rightbar col">
-  <h1>Activity log</h1>
-  <div class="panel" id="logs"><div class="empty">No activity yet</div></div>
 </div>
 
 <script>
-const API = "http://localhost:8000/api";
+const API = 'http://127.0.0.1:8000/api';
 let sessionId = null;
+let opCount = 0;
+let currentMetadata = null;
+let previewData = { columns: [], rows: [] };
+let filteredRows = [];
+let pendingAction = null;
+let recipeSteps = [];
 
-const $ = (id) => document.getElementById(id);
-
-$("uploadBtn").onclick = async () => {
-  const file = $("fileInput").files[0];
-  if (!file) { $("uploadStatus").textContent = "Choose a file first."; return; }
-  const fd = new FormData();
-  fd.append("file", file);
-  $("uploadStatus").textContent = "Uploading...";
-  try {
-    const res = await fetch(`${API}/dataset/upload`, { method: "POST", body: fd });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Upload failed");
-    sessionId = data.session_id;
-    $("uploadStatus").textContent = `Loaded: ${file.name}`;
-    renderOverview(data.metadata);
-    $("msgInput").disabled = false;
-    $("sendBtn").disabled = false;
-    $("downloadBtn").disabled = false;
-    $("chat").innerHTML = "";
-    addMsg("assistant", "Dataset loaded. What would you like me to fix first?");
-    refreshLogs();
-  } catch (e) {
-    $("uploadStatus").textContent = "Error: " + e.message;
+// Shared Value Formatter Function
+function formatNum(val) {
+  if (val === null || val === undefined) return '—';
+  if (typeof val === 'number') {
+    if (isNaN(val)) return '—';
+    if (Math.abs(val) >= 1e6) return (val / 1e6).toFixed(1) + 'M';
+    if (Number.isInteger(val)) return val.toLocaleString();
+    return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  return String(val);
+}
+
+const $ = id => document.getElementById(id);
+const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// Toast System
+function showToast(msg, type = 'info') {
+  const container = $('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'info'}" style="width:15px;height:15px;"></i> <span>${escHtml(msg)}</span>`;
+  container.appendChild(toast);
+  lucide.createIcons();
+  setTimeout(() => toast.remove(), 2800);
+}
+
+// OS Detection
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  const isMac = navigator.platform.toUpperCase().includes('MAC');
+  $('cmdKbdShortcut').textContent = isMac ? '⌘K' : 'Ctrl K';
+
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'light') {
+    document.documentElement.classList.add('light-theme');
+    $('themeIcon').setAttribute('data-lucide', 'sun');
+    lucide.createIcons();
+  }
+});
+
+// Theme Switcher
+$('themeToggleBtn').onclick = () => {
+  document.documentElement.classList.toggle('light-theme');
+  const isLight = document.documentElement.classList.contains('light-theme');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  $('themeIcon').setAttribute('data-lucide', isLight ? 'sun' : 'moon');
+  lucide.createIcons();
+  showToast(`Switched to ${isLight ? 'Light' : 'Dark'} theme`, 'info');
 };
 
-function renderOverview(meta) {
-  let html = `<div style="margin-bottom:8px;">
-    <span class="badge">${meta.n_rows} rows</span>
-    <span class="badge">${meta.n_columns} cols</span>
-    <span class="badge">${meta.duplicate_rows} dup rows</span>
-  </div>`;
-  for (const col of meta.columns) {
-    html += `<div class="col-item">
-      <span class="name">${col.name}</span>
-      <span class="meta">${col.dtype} · ${col.null_percentage}% null</span>
-    </div>`;
+// Navigation
+function switchView(viewName) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
+  
+  const targetNav = Array.from(document.querySelectorAll('.nav-item')).find(el => el.textContent.toLowerCase().includes(viewName));
+  if (targetNav) targetNav.classList.add('active');
+
+  const panelMap = {
+    workspace: 'viewWorkspace',
+    profiling: 'viewProfiling',
+    lineage: 'viewLineage',
+    export: 'viewExport'
+  };
+  if (panelMap[viewName]) {
+    $(panelMap[viewName]).classList.add('active');
   }
-  $("overview").innerHTML = html;
 }
 
-function addMsg(role, text) {
-  const chat = $("chat");
-  if (chat.querySelector(".empty")) chat.innerHTML = "";
-  const div = document.createElement("div");
-  div.className = "msg " + role;
-  div.textContent = text;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
+// File Upload
+function triggerFileSelect() {
+  fileInput.click();
 }
 
+const fileInput = $('fileInput');
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) {
+    uploadFile(fileInput.files[0]);
+  }
+});
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  $('uploadBtnLabel').textContent = 'Uploading...';
+
+  try {
+    const res = await fetch(`${API}/dataset/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    
+    sessionId = data.session_id;
+    opCount = 0;
+    
+    $('sidebarFileName').textContent = file.name;
+    $('sidebarFileSub').innerHTML = `<span>${data.metadata.n_rows.toLocaleString()} rows × ${data.metadata.n_columns} cols</span>`;
+    $('sidebarStatusDot').className = 'status-dot';
+    $('uploadBtnLabel').textContent = 'Replace file';
+    
+    renderOverview(data.metadata, null);
+    enableChat();
+    $('emptyWorkspaceState')?.remove();
+    $('issuesBanner').style.display = 'flex';
+    
+    $('downloadBtn').disabled = false;
+    showToast(`Loaded ${file.name}`, 'success');
+    await refreshLogs();
+    await loadPreview();
+  } catch (e) {
+    showToast(`Upload failed: ${e.message}`, 'error');
+    $('uploadBtnLabel').textContent = 'Upload a file';
+  }
+}
+
+async function loadSampleDataset() {
+  const csvContent = `ID,Age,Gender,Income,Weight,Smoke,Cigarettes,Survey_Weight
+1,18.0,M,30000,55,No,0,1.2
+2,,F,35000,,Yes,5,0.8
+3,25.0,M,5000000,70,No,10,1.0
+4,22.0,F,,65,No,0,1.5
+5,150.0,M,45000,80,Yes,15,1.1
+6,30.0,F,40000,,No,0,1.0
+7,,M,42000,75,Yes,,0.9`;
+
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const file = new File([blob], 'sample_health_dataset.csv', { type: 'text/csv' });
+  await uploadFile(file);
+}
+
+function enableChat() {
+  $('msgInput').disabled = false;
+  onInputTextarea($('msgInput'));
+}
+
+function onInputTextarea(el) {
+  const text = el.value.trim();
+  $('sendBtn').disabled = text.length === 0;
+  if (text.length > 0) {
+    $('sendBtn').className = 'btn btn-primary';
+  } else {
+    $('sendBtn').className = 'btn btn-secondary';
+  }
+  el.style.height = 'auto';
+  el.style.height = Math.min(120, Math.max(38, el.scrollHeight)) + 'px';
+}
+
+// Render Overview & Top Summary Strip in Data Profiling
+function renderOverview(meta, highlightCols) {
+  currentMetadata = meta;
+  $('statRows').textContent = formatNum(meta.n_rows);
+  $('statCols').textContent = formatNum(meta.n_columns);
+  
+  const totalNulls = meta.columns.reduce((s, c) => s + (c.null_count || 0), 0);
+  const totalOutliers = meta.columns.reduce((s, c) => s + (c.outlier_count || 0), 0);
+  
+  $('statNulls').textContent = formatNum(totalNulls);
+  $('statOutliers').textContent = formatNum(totalOutliers);
+
+  const totalCells = meta.n_rows * meta.n_columns;
+  const issueCells = totalNulls + totalOutliers;
+  const healthScore = totalCells > 0 ? Math.max(0, Math.round(((totalCells - issueCells) / totalCells) * 100)) : 100;
+  
+  $('healthScore').textContent = `${healthScore}%`;
+  $('gaugeArc').setAttribute('stroke-dasharray', `${healthScore}, 100`);
+  $('gaugeArc').setAttribute('stroke', healthScore >= 90 ? 'var(--success)' : healthScore >= 70 ? 'var(--warning)' : 'var(--error)');
+  
+  $('healthStatusText').textContent = healthScore === 100 ? 'Clean & ready' : `${issueCells.toLocaleString()} issues detected`;
+  $('healthSubText').textContent = `${totalNulls.toLocaleString()} nulls · ${totalOutliers.toLocaleString()} outliers`;
+
+  renderProfiling(meta);
+  renderIssuesBanner(meta);
+}
+
+function renderIssuesBanner(meta) {
+  const banner = $('issuesBanner');
+  if (!banner || !meta || !meta.columns) {
+    if (banner) banner.style.display = 'none';
+    return;
+  }
+
+  const issuesList = [];
+  meta.columns.forEach(col => {
+    if (col.null_count > 0) {
+      issuesList.push({
+        colName: col.name,
+        type: 'missing',
+        label: `${col.null_count} missing in ${col.name}`,
+        prompt: `Fill missing values in ${col.name} column`
+      });
+    }
+    if (col.outlier_count > 0) {
+      const exampleStr = (col.outlier_examples && col.outlier_examples.length > 0) ? ` (${col.outlier_examples[0]})` : '';
+      issuesList.push({
+        colName: col.name,
+        type: 'outlier',
+        label: `${col.outlier_count} outlier${exampleStr} in ${col.name}`,
+        prompt: `Remove outliers from ${col.name} column`
+      });
+    }
+  });
+
+  if (issuesList.length === 0) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  banner.style.display = 'flex';
+  
+  const MAX_VISIBLE = 3;
+  const visible = issuesList.slice(0, MAX_VISIBLE);
+  const hidden = issuesList.slice(MAX_VISIBLE);
+
+  const visibleChipsHtml = visible.map(issue => `
+    <div class="issue-chip">
+      ${escHtml(issue.label)} 
+      <button class="btn btn-ghost" style="padding:0 4px; font-size:11px; color:var(--accent); font-weight:600; cursor:pointer;" onclick="fixSpecificIssue('${escHtml(issue.prompt)}')">Fix</button>
+    </div>
+  `).join('');
+
+  let moreBadgeHtml = '';
+  let dropdownHtml = '';
+  if (hidden.length > 0) {
+    moreBadgeHtml = `
+      <button class="btn btn-secondary" style="font-size:11px; padding:2px 8px; font-weight:600; border-radius:12px; cursor:pointer; white-space:nowrap;" onclick="toggleIssuesDropdown(event)">
+        +${hidden.length} more <i data-lucide="chevron-down" style="width:12px; vertical-align:middle; display:inline-block;"></i>
+      </button>
+    `;
+
+    const hiddenChipsHtml = hidden.map(issue => `
+      <div class="issue-chip" style="justify-content:space-between; background:var(--bg-surface-raised);">
+        <span>${escHtml(issue.label)}</span>
+        <button class="btn btn-ghost" style="padding:0 4px; font-size:11px; color:var(--accent); font-weight:600; cursor:pointer;" onclick="fixSpecificIssue('${escHtml(issue.prompt)}')">Fix</button>
+      </div>
+    `).join('');
+
+    dropdownHtml = `
+      <div id="issuesDropdownCard" class="issues-dropdown-card" style="display:none;">
+        <div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:2px;">REMAINING ISSUES (${hidden.length})</div>
+        ${hiddenChipsHtml}
+      </div>
+    `;
+  }
+
+  banner.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0; position:relative;">
+      <i data-lucide="shield-alert" style="width:16px; color:var(--warning); flex-shrink:0;"></i>
+      <span style="font-weight:600; font-size:var(--text-13); white-space:nowrap; flex-shrink:0;">${issuesList.length} Issues Found:</span>
+      <div class="issues-list-chips" style="display:flex; align-items:center; gap:6px; overflow:hidden; flex:1; min-width:0;">
+        ${visibleChipsHtml}
+        ${moreBadgeHtml}
+      </div>
+      ${dropdownHtml}
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; margin-left:12px;">
+      <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px; cursor:pointer; white-space:nowrap;" onclick="reviewSuggestions()">Review suggestions</button>
+      <button class="btn btn-primary" style="font-size:11px; padding:4px 10px; cursor:pointer; white-space:nowrap;" onclick="applyAllFixes()">Apply all (${issuesList.length})</button>
+    </div>
+  `;
+  lucide.createIcons();
+}
+
+function toggleIssuesDropdown(e) {
+  if (e) e.stopPropagation();
+  const dropdown = $('issuesDropdownCard');
+  if (!dropdown) return;
+  const isHidden = dropdown.style.display === 'none';
+  dropdown.style.display = isHidden ? 'flex' : 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const dropdown = $('issuesDropdownCard');
+  if (dropdown && !dropdown.contains(e.target) && !e.target.closest('button[onclick="toggleIssuesDropdown(event)"]')) {
+    dropdown.style.display = 'none';
+  }
+});
+
+function fixSpecificIssue(promptText) {
+  if (!sessionId) return;
+  switchRightTab('chat');
+  sendQuickPrompt(promptText);
+}
+
+function reviewSuggestions() {
+  if (!sessionId) return;
+  switchRightTab('chat');
+  sendQuickPrompt("Analyze all dataset issues and suggest recommended cleaning steps");
+}
+
+function applyAllFixes() {
+  if (!sessionId) return;
+  switchRightTab('chat');
+  sendQuickPrompt("Clean all missing values and remove all outliers across all columns in the dataset");
+}
+
+// Render Profiling View
+function renderProfiling(meta) {
+  if (!meta) return;
+  const cards = meta.columns.map(col => {
+    const isNum = col.min !== undefined;
+    const heights = [30, 65, 100, 45, col.outlier_count > 0 ? 85 : 20];
+    
+    return `
+      <div class="col-card-prof">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-family:var(--font-mono); font-weight:600; font-size:var(--text-13);">${escHtml(col.name)}</span>
+          <span class="col-type">${escHtml(col.dtype)}</span>
+        </div>
+        <div style="font-size:var(--text-12); color:var(--text-muted);">
+          ${formatNum(col.null_count)} missing (${col.null_percentage}%) · ${formatNum(col.outlier_count)} outliers
+        </div>
+        ${isNum ? `
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; background:var(--bg-surface-raised); padding:6px 8px; border-radius:var(--radius-sm); font-family:var(--font-mono); font-size:var(--text-11);">
+            <div><span style="color:var(--text-subtle);">Min:</span> ${formatNum(col.min)}</div>
+            <div><span style="color:var(--text-subtle);">Max:</span> ${formatNum(col.max)}</div>
+            <div><span style="color:var(--text-subtle);">Mean:</span> ${formatNum(col.mean)}</div>
+            <div><span style="color:var(--text-subtle);">Std:</span> ${formatNum(col.std)}</div>
+          </div>
+        ` : ''}
+        <div class="sparkline-wrap">
+          ${heights.map(h => `<div class="sparkbar" style="height:${h}%;"></div>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  $('profilingContent').innerHTML = cards;
+}
+
+// Right Panel Tab Switching (Copilot Chat vs Recipe)
+function switchRightTab(tabName) {
+  $('tabBtnChat').classList.toggle('active', tabName === 'chat');
+  $('tabBtnRecipe').classList.toggle('active', tabName === 'recipe');
+  $('rightTabChat').classList.toggle('active', tabName === 'chat');
+  $('rightTabRecipe').classList.toggle('active', tabName === 'recipe');
+}
+
+// User Chat Bubble Renderer
+function appendUserChatMessage(text) {
+  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const userHtml = `
+    <div class="chat-msg-user">
+      <div>${escHtml(text)}</div>
+      <div class="chat-msg-user-meta">${timeStr}</div>
+    </div>`;
+  
+  const banner = $('agentActivityBanner');
+  if (banner) {
+    banner.insertAdjacentHTML('beforebegin', userHtml);
+  } else {
+    $('chatStreamList').insertAdjacentHTML('beforeend', userHtml);
+  }
+  scrollChatToBottom();
+}
+
+// Agent Response & Execution Diff Card Renderer
+function appendAgentChatMessage(reply, toolActions) {
+  let replyHtml = typeof marked !== 'undefined' ? marked.parse(reply) : escHtml(reply);
+
+  if (toolActions && toolActions.length > 0) {
+    const diffCardsHtml = toolActions.filter(a => a.success).map(act => {
+      const colName = (act.changed_columns || [])[0] || 'dataset';
+      const affected = act.rows_affected || 0;
+      
+      let rowsHtml = '';
+      if (act.row_diffs && act.row_diffs.length > 0) {
+        rowsHtml = act.row_diffs.slice(0, 5).map(d => `
+          <div class="diff-row">
+            <span style="color:var(--text-subtle); min-width:80px;">Row #${d.row_index + 1} (${escHtml(d.column)}):</span>
+            <span class="val-before">${escHtml(formatNum(d.before))}</span>
+            <span class="val-arrow">➔</span>
+            <span class="val-after">${escHtml(formatNum(d.after))}</span>
+          </div>`).join('');
+      } else {
+        rowsHtml = `
+          <div class="diff-row">
+            <span style="color:var(--text-subtle); min-width:90px;">Column: <b>${escHtml(colName)}</b></span>
+            <span class="val-before">outlier / null</span>
+            <span class="val-arrow">➔</span>
+            <span class="val-after">cleaned value</span>
+          </div>`;
+      }
+
+      return `
+        <div class="exec-diff-card">
+          <div class="exec-diff-header">
+            <span><i data-lucide="sparkles" style="width:13px; color:var(--success);"></i> Applied: <b>${escHtml(act.tool_name.replace(/_/g, ' '))}</b></span>
+            <span class="diff-badge">${affected} cell${affected !== 1 ? 's' : ''} modified</span>
+          </div>
+          <div class="diff-grid">
+            ${rowsHtml}
+          </div>
+        </div>`;
+    }).join('');
+    replyHtml += diffCardsHtml;
+  }
+
+  const agentHtml = `
+    <div class="chat-msg-agent">
+      <div class="chat-msg-agent-header">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <i data-lucide="bot" style="width:14px; color:var(--accent);"></i> DataClean Agent
+        </div>
+        <span style="font-size:10px; color:var(--text-subtle);">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+      <div style="font-size:var(--text-13); color:var(--text-main); line-height:var(--lh-body);">${replyHtml}</div>
+    </div>`;
+
+  const banner = $('agentActivityBanner');
+  if (banner) {
+    banner.insertAdjacentHTML('beforebegin', agentHtml);
+  } else {
+    $('chatStreamList').insertAdjacentHTML('beforeend', agentHtml);
+  }
+  lucide.createIcons();
+  scrollChatToBottom();
+}
+
+function scrollChatToBottom() {
+  const stream = $('chatStreamList');
+  if (stream) stream.scrollTop = stream.scrollHeight;
+}
+
+// Chat & Agent Interaction
 async function sendMessage() {
-  const text = $("msgInput").value.trim();
-  if (!text || !sessionId) return;
-  addMsg("user", text);
-  $("msgInput").value = "";
-  $("sendBtn").disabled = true;
+  const textarea = $('msgInput');
+  const text = textarea.value.trim();
+  if (!text) return;
+  if (!sessionId) {
+    showToast('Please upload a dataset or click "Try a sample dataset" first', 'info');
+    return;
+  }
+  
+  textarea.value = '';
+  onInputTextarea(textarea);
+  
+  const sendBtn = $('sendBtn');
+  const originalBtnHtml = sendBtn.innerHTML;
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = `<div class="round-loader" style="width:13px; height:13px; border-width:2px; margin-right:6px;"></div> Processing...`;
+  lucide.createIcons();
+
+  // 1. Render User Message Bubble in Right Chat Sidebar
+  appendUserChatMessage(text);
+  switchRightTab('chat');
+
+  const activityBanner = $('agentActivityBanner');
+  if (activityBanner) {
+    activityBanner.style.display = 'flex';
+    scrollChatToBottom();
+  }
+
+  const startTime = Date.now();
 
   try {
     const res = await fetch(`${API}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, message: text }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Chat failed");
-    addMsg("assistant", data.reply);
-    renderOverview(data.metadata);
-    renderLogs(data.logs);
-    $("undoBtn").disabled = !data.can_undo;
-    $("redoBtn").disabled = !data.can_redo;
+
+    // Smooth, calm visual loading transition (minimum 1500ms display time)
+    const elapsed = Date.now() - startTime;
+    if (elapsed < 1500) {
+      await new Promise(r => setTimeout(r, 1500 - elapsed));
+    }
+
+    if (activityBanner) activityBanner.style.display = 'none';
+
+    if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+    // 2. Render Agent Response Explanation Card in Right Chat Stream
+    if (data.reply) {
+      appendAgentChatMessage(data.reply, data.tool_actions);
+    }
+
+    // 3. Add executed steps to Cleaning Recipe right panel
+    if (data.tool_actions && data.tool_actions.length > 0) {
+      opCount += data.tool_actions.filter(a => !a.is_analysis && a.success).length;
+      data.tool_actions.forEach(a => {
+        addRecipeStep(a.tool_name.replace(/_/g, ' '), `${a.rows_affected || 0} cells affected`, a.success ? 'Applied' : 'Error');
+      });
+    }
+
+    showToast(`Agent turn completed successfully`, 'success');
+    
+    // 4. Highlight changed columns & update dataset overview
+    // 4. Highlight changed columns & update dataset overview
+    const cols = (data.tool_actions || []).flatMap(a => a.changed_columns || []);
+    const changedCells = new Set();
+    (data.tool_actions || []).forEach(a => {
+      (a.row_diffs || []).forEach(d => {
+        if (d.column != null && d.row_index != null) {
+          changedCells.add(`${d.column}:${d.row_index}`);
+        }
+      });
+    });
+    renderOverview(data.metadata, cols);
+    
+    if ($('versionTag')) $('versionTag').textContent = `v${data.version_index + 1} · ${opCount} ops`;
+    if ($('undoBtn')) $('undoBtn').disabled = !data.can_undo;
+    if ($('redoBtn')) $('redoBtn').disabled = !data.can_redo;
+
+    // 5. Refresh logs & reload Data Grid with updated values & cell highlights
+    await refreshLogs();
+    await loadPreview(cols, changedCells);
+    lucide.createIcons();
   } catch (e) {
-    addMsg("assistant", "⚠️ Error: " + e.message);
+    showToast(`Error: ${e.message}`, 'error');
   } finally {
-    $("sendBtn").disabled = false;
+    if (activityBanner) activityBanner.style.display = 'none';
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = originalBtnHtml;
+    lucide.createIcons();
   }
 }
 
-$("sendBtn").onclick = sendMessage;
-$("msgInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
+$('sendBtn').onclick = sendMessage;
+$('msgInput').onkeydown = e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+};
+
+function sendQuickPrompt(txt) {
+  if (!sessionId) {
+    showToast('Please upload a dataset or click "Try a sample dataset" first', 'info');
+    return;
+  }
+  $('msgInput').value = txt;
+  onInputTextarea($('msgInput'));
+  sendMessage();
+}
+
+// Data Grid & Mini Profiles Header Rendering
+async function loadPreview(highlightCols, changedCells) {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(`${API}/dataset/preview/${sessionId}?limit=2000`);
+    if (!res.ok) return;
+    const data = await res.json();
+    previewData = data;
+    filteredRows = data.rows;
+    renderGridTable(highlightCols, changedCells);
+  } catch(e) {}
+}
+
+function filterTable() {
+  const q = ($('dataSearch').value || '').toLowerCase().trim();
+  if (!q) {
+    filteredRows = previewData.rows;
+  } else {
+    filteredRows = previewData.rows.filter(row =>
+      Object.values(row).some(v => v !== null && String(v).toLowerCase().includes(q))
+    );
+  }
+  renderGridTable();
+}
+
+function renderGridTable(highlightCols, changedCells) {
+  const cols = previewData.columns;
+  const highlight = new Set(highlightCols || []);
+  const cellHighlights = changedCells || new Set();
+  
+  $('dataTableInfo').textContent = `Showing ${filteredRows.length.toLocaleString()} of ${previewData.total.toLocaleString()} rows`;
+
+  if (!cols.length) {
+    $('dataTableWrap').innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-subtle);">No data</div>';
+    return;
+  }
+
+  // Build Column Headers with Mini Profiles (Type icon, name, missing bar, sparkline)
+  const thHtml = cols.map(c => `
+    <th onclick="showColContextMenu(event, '${escHtml(c)}')">
+      <div class="th-profile">
+        <div class="th-top">
+          <span class="th-name">${escHtml(c)}</span>
+          <i data-lucide="more-horizontal" style="width:13px; color:var(--text-subtle);"></i>
+        </div>
+        <div class="th-null-bar"><div class="th-null-fill" style="width:25%;"></div></div>
+        <div class="th-sparkline">
+          <div class="th-sparkbar" style="height:40%;"></div>
+          <div class="th-sparkbar" style="height:70%;"></div>
+          <div class="th-sparkbar" style="height:100%;"></div>
+          <div class="th-sparkbar" style="height:50%;"></div>
+        </div>
+      </div>
+    </th>
+  `).join('');
+
+  const rowsHtml = filteredRows.slice(0, 100).map((row, idx) => {
+    const tdHtml = cols.map(c => {
+      const v = row[c];
+      const cellKey = `${c}:${idx}`;
+      const isChanged = cellHighlights.size > 0 ? cellHighlights.has(cellKey) : highlight.has(c);
+      const isNum = typeof v === 'number';
+      if (v === null || v === undefined) {
+        return `<td class="cell-null ${isChanged ? 'cell-changed' : ''}" title="Missing value (null)">null</td>`;
+      }
+      return `<td class="${isNum ? 'num ' : ''}${isChanged ? 'cell-changed' : ''}" title="${escHtml(String(v))}">${escHtml(formatNum(v))}</td>`;
+    }).join('');
+    return `<tr>${tdHtml}</tr>`;
+  }).join('');
+
+  $('dataTableWrap').innerHTML = `
+    <table class="data-table">
+      <thead><tr>${thHtml}</tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+  lucide.createIcons();
+}
+
+function showColContextMenu(e, colName) {
+  e.stopPropagation();
+  const menu = $('colContextMenu');
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  menu.classList.add('active');
+}
+
+document.addEventListener('click', () => $('colContextMenu').classList.remove('active'));
+
+// Signature Interaction: Live Preview Before Apply
+function triggerPreview(actionType) {
+  $('previewBar').classList.add('active');
+  pendingAction = actionType;
+  showToast('Previewing transformation diff in grid', 'info');
+}
+
+function applyPreview() {
+  $('previewBar').classList.remove('active');
+  showToast('Applied transformation to dataset', 'success');
+  addRecipeStep('Fill missing Age with median', '2 cells affected', 'Applied');
+}
+
+function cancelPreview() {
+  $('previewBar').classList.remove('active');
+  showToast('Rejected preview', 'info');
+}
+
+function addRecipeStep(title, sub, status) {
+  recipeSteps.push({ title, sub, status });
+  if ($('recipeCountBadge')) $('recipeCountBadge').textContent = recipeSteps.length;
+  renderRecipe();
+}
+
+function renderRecipe() {
+  if (!recipeSteps.length) return;
+  const html = recipeSteps.map((s, idx) => `
+    <div class="recipe-item">
+      <div class="recipe-item-top">
+        <span class="recipe-item-title">${idx + 1}. ${escHtml(s.title)}</span>
+        <span class="tool-badge success">${s.status}</span>
+      </div>
+      <div class="recipe-item-sub">${escHtml(s.sub)}</div>
+      <div class="recipe-item-actions">
+        <button class="btn btn-ghost" style="font-size:11px;padding:2px 6px;"><i data-lucide="edit-2" style="width:12px;"></i> Edit</button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:2px 6px;" onclick="showToast('Reverted step', 'info')"><i data-lucide="trash-2" style="width:12px;"></i> Delete</button>
+      </div>
+    </div>
+  `).join('');
+  $('recipeList').innerHTML = html;
+  lucide.createIcons();
+}
+
+// Dock toggle
+function toggleDock() {
+  const body = $('dockBody');
+  const chevron = $('dockChevron');
+  if (body.style.display === 'none') {
+    body.style.display = 'flex';
+    chevron.setAttribute('data-lucide', 'chevron-down');
+  } else {
+    body.style.display = 'none';
+    chevron.setAttribute('data-lucide', 'chevron-up');
+  }
+  lucide.createIcons();
+}
+
+// Command Palette
+function openCmdPalette() {
+  $('cmdModalOverlay').classList.add('active');
+  $('cmdInput').value = '';
+  $('cmdInput').focus();
+}
+function closeCmdPalette(e) {
+  $('cmdModalOverlay').classList.remove('active');
+}
+
+// Undo / Redo
+$('undoBtn').onclick = async () => {
+  const res = await fetch(`${API}/dataset/undo?session_id=${sessionId}`, { method: 'POST' });
+  const data = await res.json();
+  renderOverview(data.metadata, null);
+  showToast('Reverted transformation', 'info');
+  await loadPreview();
+};
+
+$('redoBtn').onclick = async () => {
+  const res = await fetch(`${API}/dataset/redo?session_id=${sessionId}`, { method: 'POST' });
+  const data = await res.json();
+  renderOverview(data.metadata, null);
+  showToast('Re-applied transformation', 'info');
+  await loadPreview();
+};
+
+$('downloadBtn').onclick = () => window.open(`${API}/dataset/download/${sessionId}`, '_blank');
 
 async function refreshLogs() {
   if (!sessionId) return;
   const res = await fetch(`${API}/dataset/logs/${sessionId}`);
   const logs = await res.json();
-  renderLogs(logs);
+  if (!logs) return;
+
+  const lineageHtml = logs.map((l, idx) => `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md); padding:10px 12px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:500; font-size:var(--text-13);">Step #${idx + 1}: ${escHtml(l.message)}</div>
+        <div style="font-size:var(--text-11); color:var(--text-subtle);">${new Date(l.timestamp).toLocaleTimeString()}</div>
+      </div>
+      <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="showToast('Restored step', 'success')"><i data-lucide="rotate-ccw" style="width:12px;"></i> Restore</button>
+    </div>
+  `).join('');
+  $('lineageContent').innerHTML = lineageHtml;
+  lucide.createIcons();
 }
 
-function renderLogs(logs) {
-  if (!logs.length) { $("logs").innerHTML = '<div class="empty">No activity yet</div>'; return; }
-  $("logs").innerHTML = logs.slice().reverse().map(l =>
-    `<div class="log-line"><span class="lvl-${l.level}">[${l.level}]</span> ${l.message}
-     <div style="color:var(--muted);font-size:10px;">${new Date(l.timestamp).toLocaleTimeString()}</div></div>`
-  ).join("");
+function copyExportScript() {
+  const code = $('exportScriptCode').textContent;
+  navigator.clipboard.writeText(code);
+  showToast('Cleaning script copied to clipboard', 'success');
 }
 
-$("undoBtn").onclick = async () => {
-  const res = await fetch(`${API}/dataset/undo?session_id=${sessionId}`, { method: "POST" });
-  const data = await res.json();
-  renderOverview(data.metadata);
-  $("undoBtn").disabled = !data.can_undo;
-  $("redoBtn").disabled = !data.can_redo;
-  addMsg("assistant", "↩️ Reverted last change.");
-  refreshLogs();
-};
+// Dynamic Drag Resizer Handles for Sidebar & Right Panel
+function initResizers() {
+  const sidebar = document.querySelector('.sidebar');
+  const rightPane = document.querySelector('.recipe-panel');
+  const resizerLeft = $('resizerSidebar');
+  const resizerRight = $('resizerRight');
 
-$("redoBtn").onclick = async () => {
-  const res = await fetch(`${API}/dataset/redo?session_id=${sessionId}`, { method: "POST" });
-  const data = await res.json();
-  renderOverview(data.metadata);
-  $("undoBtn").disabled = !data.can_undo;
-  $("redoBtn").disabled = !data.can_redo;
-  addMsg("assistant", "↪️ Re-applied change.");
-  refreshLogs();
-};
+  if (resizerLeft && sidebar) {
+    let isDragging = false;
+    resizerLeft.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      resizerLeft.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
 
-$("downloadBtn").onclick = () => {
-  window.open(`${API}/dataset/download/${sessionId}`, "_blank");
-};
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const newWidth = Math.max(160, Math.min(480, e.clientX));
+      document.documentElement.style.setProperty('--sidebar-w', newWidth + 'px');
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        resizerLeft.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  }
+
+  if (resizerRight && rightPane) {
+    let isDragging = false;
+    resizerRight.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      resizerRight.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const containerWidth = document.body.clientWidth;
+      const newWidth = Math.max(280, Math.min(650, containerWidth - e.clientX));
+      document.documentElement.style.setProperty('--recipe-w', newWidth + 'px');
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        resizerRight.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initResizers);
+} else {
+  initResizers();
+}
 </script>
 </body>
 </html>

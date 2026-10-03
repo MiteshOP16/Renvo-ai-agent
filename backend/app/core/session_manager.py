@@ -90,7 +90,11 @@ class SessionManager:
     def set_summary(self, session_id: str, summary: str):
         self.get_session(session_id)["conversation_summary"] = summary
 
-    def record_tool_call(self, session_id: str, name: str, args: dict, result: str, success: bool):
+    def record_tool_call(
+        self, session_id: str, name: str, args: dict, result: str, success: bool,
+        is_analysis: bool = False, before_shape=None, after_shape=None,
+        rows_affected=None, changed_columns=None, row_diffs=None,
+    ):
         s = self.get_session(session_id)
         s["tool_history"].append(
             {
@@ -99,12 +103,24 @@ class SessionManager:
                 "args": args,
                 "result": result,
                 "success": success,
+                "is_analysis": is_analysis,
+                "before_shape": list(before_shape) if before_shape else None,
+                "after_shape": list(after_shape) if after_shape else None,
+                "rows_affected": rows_affected,
+                "changed_columns": changed_columns or [],
+                "row_diffs": row_diffs or [],
             }
         )
 
     def get_tool_history(self, session_id: str, limit: int | None = None) -> list[dict]:
         history = self.get_session(session_id)["tool_history"]
         return history[-limit:] if limit else history
+
+    def get_version_index(self, session_id: str) -> int:
+        return self.get_session(session_id)["current_index"]
+
+    def get_version_count(self, session_id: str) -> int:
+        return len(self.get_session(session_id)["versions"])
 
     def _log(self, session_id: str, level: str, message: str):
         self._sessions[session_id]["logs"].append(

@@ -24,10 +24,16 @@ from app.core.config import settings
 COLLECTION_NAME = "tool_descriptions"
 
 
+_QDRANT_CLIENT = None
+
 def get_qdrant_client() -> QdrantClient:
-    if settings.QDRANT_URL:
-        return QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY or None)
-    return QdrantClient(path=settings.QDRANT_LOCAL_PATH)
+    global _QDRANT_CLIENT
+    if _QDRANT_CLIENT is None:
+        if settings.QDRANT_URL:
+            _QDRANT_CLIENT = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY or None)
+        else:
+            _QDRANT_CLIENT = QdrantClient(path=settings.QDRANT_LOCAL_PATH)
+    return _QDRANT_CLIENT
 
 
 def ensure_collection(client: QdrantClient) -> None:

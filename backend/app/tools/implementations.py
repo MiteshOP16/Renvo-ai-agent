@@ -27,6 +27,10 @@ def handle_missing_values_impl(df: pd.DataFrame, column: str, strategy: str = "m
     column = resolve_column(df, column)
     new_df = df.copy()
     null_before = int(new_df[column].isnull().sum())
+    
+    non_nulls = new_df[column].dropna()
+    is_int_like = (pd.api.types.is_numeric_dtype(new_df[column]) and (non_nulls % 1 == 0).all()) if len(non_nulls) > 0 else False
+
     if strategy == "mean":
         new_df[column] = new_df[column].fillna(new_df[column].mean())
     elif strategy == "median":
@@ -43,6 +47,14 @@ def handle_missing_values_impl(df: pd.DataFrame, column: str, strategy: str = "m
         new_df = new_df.dropna(subset=[column])
     else:
         raise ValueError(f"Unknown strategy '{strategy}'.")
+
+    if is_int_like and strategy != "drop_rows":
+        new_df[column] = new_df[column].round()
+        if not new_df[column].isnull().any():
+            new_df[column] = new_df[column].astype(int)
+        else:
+            new_df[column] = new_df[column].astype("Int64")
+
     return new_df, f"Handled {null_before} missing value(s) in '{column}' using strategy='{strategy}'."
 
 
@@ -88,6 +100,10 @@ def handle_outliers_impl(df: pd.DataFrame, column: str, method: str = "cap", iqr
     if not pd.api.types.is_numeric_dtype(df[column]):
         raise ValueError(f"Column '{column}' is not numeric; convert its dtype first.")
     new_df = df.copy()
+    
+    non_nulls = new_df[column].dropna()
+    is_int_like = (non_nulls % 1 == 0).all() if len(non_nulls) > 0 else False
+
     q1, q3 = new_df[column].quantile(0.25), new_df[column].quantile(0.75)
     iqr = q3 - q1
     lower, upper = q1 - iqr_multiplier * iqr, q3 + iqr_multiplier * iqr
@@ -95,6 +111,12 @@ def handle_outliers_impl(df: pd.DataFrame, column: str, method: str = "cap", iqr
     n_outliers = int(outlier_mask.sum())
     if method == "cap":
         new_df[column] = new_df[column].clip(lower=lower, upper=upper)
+        if is_int_like:
+            new_df[column] = new_df[column].round()
+            if not new_df[column].isnull().any():
+                new_df[column] = new_df[column].astype(int)
+            else:
+                new_df[column] = new_df[column].astype("Int64")
         desc = f"Capped {n_outliers} outlier value(s) in '{column}' to [{round(lower,2)}, {round(upper,2)}] (IQR x{iqr_multiplier})."
     elif method == "remove":
         new_df = new_df[~outlier_mask]

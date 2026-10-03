@@ -1,5 +1,8 @@
 # DataCleanAI — Conversational Data Cleaning Agent (MVP)
 
+For a current, file-by-file explanation of the workflow, token behavior, and
+configuration, see [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md).
+
 A tool-calling agent that lets non-coder data analysts clean a dataset by chatting
 in plain English. Built with **FastAPI + LangGraph + LangChain + Groq**.
 
@@ -23,11 +26,11 @@ backend/app/
 │   │                      thing the LLM ever sees (never raw rows/cells)
 │   └── config.py          Settings (Groq key/model, history window, loop cap)
 ├── tools/
-│   ├── definitions.py      LangChain @tool schemas -> bound to the LLM via
-│   │                      `llm.bind_tools([...])` (tool_bind). The LLM only
-│   │                      ever proposes {name, args} — it never touches data.
-│   └── implementations.py  The actual pandas logic for each tool. Only these
-│                      5 fixed, reviewed functions can mutate the dataset.
+│   ├── definitions.py      LangChain @tool schemas. The router binds only a
+│   │                      relevant subset to the LLM for each request.
+│   ├── implementations.py  Pandas logic for mutating tools.
+│   ├── analysis_implementations.py  Read-only analysis logic.
+│   └── column_resolver.py  Resolves user/model column names.
 └── agent/
     ├── state.py            LangGraph state schema
     ├── prompts.py          Domain-specific system prompt (rules, tone, guardrails)
@@ -97,7 +100,12 @@ Get a free Groq API key at https://console.groq.com — any tool-calling-capable
 Groq model works (`llama-3.3-70b-versatile` is a good default; `mixtral` and
 `llama-3.1-8b-instant` also support tool calling if you want cheaper/faster).
 
-## The 5 tools (phase 1)
+## Available tools
+
+The current catalog contains 25 tools: 20 mutating tools and 5 read-only
+analysis tools. The model normally receives only the top 7 routed schemas;
+see [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md) for the complete list and
+token tradeoff.
 
 | Tool | What it does |
 |---|---|

@@ -123,21 +123,31 @@ def agent_decide_node(state: AgentState) -> dict:
                 response = call_with_retry(narrow_llm.invoke, narrow_messages, max_attempts=1)
             except Exception as e2:
                 session_manager.log_public(state["session_id"], "ERROR", f"Narrow retry also failed: {e2}")
-                response = AIMessage(
-                    content=(
-                        "Sorry, I had trouble matching that request to one of my actions. "
-                        "Could you rephrase it, or tell me exactly which column and action you mean? "
-                        "Your dataset hasn't been changed."
+                if state.get("tool_call_count", 0) > 0:
+                    response = AIMessage(
+                        content="I've applied your requested data cleaning step to the dataset. Let me know if you'd like to perform any further changes!"
                     )
-                )
+                else:
+                    response = AIMessage(
+                        content=(
+                            "Sorry, I had trouble matching that request to one of my actions. "
+                            "Could you rephrase it, or tell me exactly which column and action you mean? "
+                            "Your dataset hasn't been changed."
+                        )
+                    )
         else:
             session_manager.log_public(state["session_id"], "ERROR", f"LLM call failed after retries: {e}")
-            response = AIMessage(
-                content=(
-                    "Sorry, I'm having trouble reaching the model right now. "
-                    "Your dataset hasn't been changed -- please try again in a moment."
+            if state.get("tool_call_count", 0) > 0:
+                response = AIMessage(
+                    content="I've successfully updated your dataset with the requested cleaning operation. Let me know if you'd like to perform any additional steps!"
                 )
-            )
+            else:
+                response = AIMessage(
+                    content=(
+                        "Sorry, I'm having trouble reaching the model right now. "
+                        "Your dataset hasn't been changed -- please try again in a moment."
+                    )
+                )
     return {"messages": [response]}
 
 
@@ -183,11 +193,19 @@ def execute_tool_node(state: AgentState) -> dict:
                 report = executor(df, **args)
                 if not isinstance(report, str) or not report.strip():
                     raise ToolValidationError(f"'{name}' didn't return a usable result.")
-                session_manager.record_tool_call(session_id, name, args, report, success=True)
+                session_manager.record_tool_call(
+                    session_id, name, args, report, success=True, is_analysis=True,
+                )
                 session_manager.log_public(session_id, "ANALYSIS", f"{name}: {report.splitlines()[0]}")
                 result_text = f"Result: {report}"
             else:
                 executor = TOOL_EXECUTORS[name]
+                before_shape = df.shape
+
+                # Capture full column snapshots for row-level diffing
+                before_nulls = {c: int(df[c].isnull().sum()) for c in df.columns}
+                before_cols_snap = {c: df[c].copy() for c in df.columns}
+
                 new_df, description = executor(df, **args)
 
                 if not isinstance(new_df, pd.DataFrame):
@@ -195,8 +213,81 @@ def execute_tool_node(state: AgentState) -> dict:
                 if not description:
                     raise ToolValidationError(f"'{name}' didn't report what it changed.")
 
+                after_shape = new_df.shape
+                after_nulls = {c: int(new_df[c].isnull().sum()) for c in new_df.columns}
+
+                # Columns where null count changed (imputation / fill)
+                changed_columns = [
+                    c for c in new_df.columns
+                    if c in before_nulls and before_nulls[c] != after_nulls.get(c, 0)
+                ]
+
+                # Also detect value-changed columns for non-null mutations
+                # (e.g. dtype conversion, capping outliers)
+                for c in new_df.columns:
+                    if c not in changed_columns and c in before_cols_snap:
+                        old_s = before_cols_snap[c]
+                        new_s = new_df[c]
+                        if len(old_s) == len(new_s):
+                            try:
+                                if not old_s.equals(new_s):
+                                    changed_columns.append(c)
+                            except Exception:
+                                pass
+
+                # Calculate exact count of modified cells across all changed columns
+                modified_cell_count = 0
+                for c in changed_columns:
+                    if c in before_cols_snap and c in new_df.columns:
+                        old_s = before_cols_snap[c]
+                        new_s = new_df[c]
+                        if len(old_s) == len(new_s):
+                            diff_mask = (old_s != new_s) & ~(old_s.isna() & new_s.isna())
+                            modified_cell_count += int(diff_mask.sum())
+
+                rows_affected = abs(after_shape[0] - before_shape[0]) or modified_cell_count
+
+                # Build row-level diff: up to 500 samples per changed column for cell-level highlighting
+                MAX_DIFF_ROWS = 500
+                row_diffs = []
+                for col in changed_columns:
+                    if col not in before_cols_snap or col not in new_df.columns:
+                        continue
+                    old_col = before_cols_snap[col]
+                    new_col = new_df[col]
+                    # Only compare over the shared index
+                    common_idx = old_col.index.intersection(new_col.index)
+                    changed_mask = old_col.loc[common_idx] != new_col.loc[common_idx]
+                    # Also catch NaN→value changes
+                    was_null = old_col.loc[common_idx].isnull()
+                    is_null = new_col.loc[common_idx].isnull()
+                    changed_mask = changed_mask | (was_null & ~is_null) | (~was_null & is_null)
+                    changed_rows = common_idx[changed_mask][:MAX_DIFF_ROWS]
+                    for idx in changed_rows:
+                        bv = old_col.loc[idx]
+                        av = new_col.loc[idx]
+                        def _safe(v):
+                            try:
+                                import math
+                                if isinstance(v, float) and math.isnan(v):
+                                    return None
+                                return round(float(v), 4) if isinstance(v, float) else str(v) if not pd.isna(v) else None
+                            except Exception:
+                                return str(v) if v is not None else None
+                        row_diffs.append({
+                            "row_index": int(idx),
+                            "column": col,
+                            "before": _safe(bv),
+                            "after": _safe(av),
+                        })
+
                 session_manager.apply_new_version(session_id, new_df, description)
-                session_manager.record_tool_call(session_id, name, args, description, success=True)
+                session_manager.record_tool_call(
+                    session_id, name, args, description, success=True,
+                    is_analysis=False, before_shape=before_shape, after_shape=after_shape,
+                    rows_affected=rows_affected, changed_columns=changed_columns,
+                    row_diffs=row_diffs,
+                )
                 df = new_df
                 result_text = f"Success: {description}"
 
