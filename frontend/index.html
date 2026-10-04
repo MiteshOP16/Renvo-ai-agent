@@ -655,7 +655,7 @@ h1, h2, h3, h4, .font-heading { font-family: var(--font-heading); font-weight: 6
 </div>
 
 <script>
-const API = 'http://127.0.0.1:8000/api';
+const API = window.location.origin.includes('3000') ? 'http://127.0.0.1:8000/api' : '/api';
 let sessionId = null;
 let opCount = 0;
 let currentMetadata = null;
